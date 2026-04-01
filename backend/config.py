@@ -1,29 +1,34 @@
 """
 config.py — Single source of truth for all runtime settings.
 
-All values are read from environment variables (or a .env file via
-python-dotenv).  Pydantic-settings validates types and raises a clear
-error at startup if anything required is missing or wrong.
+All values are read from environment variables (or a .env file).
+Pydantic-settings validates types and raises a clear error at startup
+if anything required is missing or wrong.
+
+Note: List-type settings are stored as plain comma-separated strings
+to avoid pydantic-settings v2 attempting JSON parsing before validators
+run. Access them via the _list properties (e.g. supported_extensions_list).
 
 Usage anywhere in the codebase:
     from config import settings
-    print(settings.ollama_base_url)
+    print(settings.ollama_base_url_str)
+    print(settings.supported_extensions_list)
 """
 
 from functools import lru_cache
 from pathlib import Path
 from typing import List
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).parent.parent / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",             # silently drop unknown env vars
+        extra="ignore",
     )
 
     # ── NAS / File System ─────────────────────────────────────────────────────
@@ -31,19 +36,14 @@ class Settings(BaseSettings):
         default=Path("/data/files"),
         description="Root directory to watch and index.",
     )
-    supported_extensions: List[str] = Field(
-        default=[".pdf", ".docx", ".txt", ".md", ".png", ".jpg", ".jpeg",
-                 ".mp3", ".wav", ".mp4", ".mov"],
-        description="File extensions that will be picked up by the watcher.",
+    supported_extensions: str = Field(
+        default=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.mp3,.wav",
+        description="Comma-separated file extensions to index.",
     )
-
-    @field_validator("supported_extensions", mode="before")
-    @classmethod
-    def parse_extensions(cls, v):
-        """Accept either a list or a comma-separated string from the env."""
-        if isinstance(v, str):
-            return [ext.strip() for ext in v.split(",") if ext.strip()]
-        return v
+    watcher_exclude_paths: str = Field(
+        default="",
+        description="Comma-separated absolute paths to exclude from the watcher.",
+    )
 
     # ── ChromaDB ──────────────────────────────────────────────────────────────
     chroma_path: Path = Field(
@@ -99,30 +99,39 @@ class Settings(BaseSettings):
         description="Skip the Ollama connectivity check on startup.",
     )
 
-    # ── Derived helpers (not env vars) ────────────────────────────────────────
+    # ── Derived properties (not env vars) ─────────────────────────────────────
+
     @property
     def ollama_base_url_str(self) -> str:
         """Return Ollama base URL as a plain string (no trailing slash)."""
         return str(self.ollama_base_url).rstrip("/")
 
     @property
+    def supported_extensions_list(self) -> List[str]:
+        return [e.strip() for e in self.supported_extensions.split(",") if e.strip()]
+
+    @property
+    def watcher_exclude_paths_list(self) -> List[str]:
+        return [p.strip() for p in self.watcher_exclude_paths.split(",") if p.strip()]
+
+    @property
     def document_extensions(self) -> List[str]:
-        return [e for e in self.supported_extensions
-                if e in {".pdf", ".docx", ".txt", ".md"}]
+        return [e for e in self.supported_extensions_list
+                if e in {".pdf", ".docx", ".txt", ".md", ".yml", ".yaml", ".json"}]
 
     @property
     def image_extensions(self) -> List[str]:
-        return [e for e in self.supported_extensions
+        return [e for e in self.supported_extensions_list
                 if e in {".png", ".jpg", ".jpeg", ".gif", ".webp"}]
 
     @property
     def audio_extensions(self) -> List[str]:
-        return [e for e in self.supported_extensions
+        return [e for e in self.supported_extensions_list
                 if e in {".mp3", ".wav", ".m4a", ".flac", ".ogg"}]
 
     @property
     def video_extensions(self) -> List[str]:
-        return [e for e in self.supported_extensions
+        return [e for e in self.supported_extensions_list
                 if e in {".mp4", ".mov", ".avi", ".mkv"}]
 
 
