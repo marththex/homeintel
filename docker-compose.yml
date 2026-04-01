@@ -1,0 +1,112 @@
+version: "3.9"
+
+# ── HomeIntel — Docker Compose ────────────────────────────────────────────────
+#
+# Before starting:
+#   1. cp .env.example .env  and fill in NAS_WATCH_PATH
+#   2. docker compose up -d
+#
+# Volumes that persist on your NAS:
+#   - NAS_WATCH_PATH          → the files being indexed (read-only)
+#   - ./data/chroma           → vector store (read-write)
+#   - ./data/ollama           → downloaded LLM weights (read-write)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Ollama (local LLM server) ───────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: homeintel-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama   # weights persist between restarts
+    ports:
+      - "11434:11434"                 # expose for debugging; remove in prod
+    # GPU passthrough — uncomment if you have an NVIDIA card on the NAS host
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Model bootstrap (runs once, then exits) ─────────────────────────────────
+  # Pulls the LLM and embedding model on first startup so the API
+  # doesn't time out waiting on a cold pull.
+  model-pull:
+    image: ollama/ollama:latest
+    container_name: homeintel-model-pull
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama pull ${OLLAMA_LLM_MODEL:-qwen3.5:9b}
+        ollama pull ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ollama-models:/root/.ollama
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: homeintel-api
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ${NAS_WATCH_PATH:-./data/sample-files}:/data/files:ro   # NAS mount (read-only)
+      - chroma-data:/data/chroma                                 # vector store
+    ports:
+      - "${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── React frontend ──────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: homeintel-ui
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:${API_PORT:-8000}
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  ollama-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${OLLAMA_MODELS_PATH:-./data/ollama}   # override in .env to put on NAS
+
+  chroma-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CHROMA_PATH:-./data/chroma}

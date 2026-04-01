@@ -1,0 +1,41 @@
+version: "3.9"
+
+# ── HomeIntel — Dev overrides ─────────────────────────────────────────────────
+#
+# Use this on top of docker-compose.yml during development:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Changes from prod:
+#   - Backend mounts source code live (hot-reload via uvicorn --reload)
+#   - Frontend runs Vite dev server instead of nginx
+#   - SKIP_LLM_HEALTH_CHECK lets the API start even if Ollama isn't ready yet
+#   - Log level bumped to debug
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  api:
+    build:
+      context: ./backend
+      target: dev                         # multi-stage Dockerfile dev target
+    volumes:
+      - ./backend:/app                    # live source mount
+      - ${NAS_WATCH_PATH:-./data/sample-files}:/data/files:ro
+      - ./data/chroma:/data/chroma
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - LOG_LEVEL=debug
+      - SKIP_LLM_HEALTH_CHECK=false
+      - OLLAMA_BASE_URL=http://ollama:11434
+
+  ui:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend/src:/app/src           # live source mount
+    command: npm run dev -- --host
+    ports:
+      - "5173:5173"                       # Vite default port
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000

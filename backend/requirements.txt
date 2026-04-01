@@ -1,0 +1,43 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# ── Config ────────────────────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# ── LangChain core ────────────────────────────────────────────────────────────
+langchain==0.3.13
+langchain-community==0.3.13
+langchain-ollama==0.2.2
+langchain-chroma==0.1.4
+
+# ── Vector store ──────────────────────────────────────────────────────────────
+chromadb==0.5.23
+
+# ── Document ingestion ────────────────────────────────────────────────────────
+unstructured[pdf,docx]==0.16.10      # PDF + DOCX parsing
+python-docx==1.1.2
+pypdf==5.1.0                         # fallback PDF parser
+
+# ── Image processing ──────────────────────────────────────────────────────────
+Pillow==11.0.0
+open-clip-torch==2.29.0              # CLIP embeddings
+torch==2.5.1                         # CPU build; swap for cu121 on NVIDIA NAS
+torchvision==0.20.1
+
+# ── Audio / Speech ────────────────────────────────────────────────────────────
+faster-whisper==1.1.0                # local speech-to-text
+
+# ── Video ─────────────────────────────────────────────────────────────────────
+opencv-python-headless==4.10.0.84    # frame extraction (headless = no GUI deps)
+
+# ── File watching ─────────────────────────────────────────────────────────────
+watchdog==6.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-multipart==0.0.18             # FastAPI file uploads
+httpx==0.28.0                        # async HTTP (Ollama health checks)
+tenacity==9.0.0                      # retry logic for Ollama calls
+structlog==24.4.0                    # structured JSON logging
+python-dotenv==1.0.1                 # load .env in non-Docker contexts
