@@ -28,6 +28,14 @@ def separator(title: str) -> None:
     print('─' * 50)
 
 
+def ensure_clean_collection(vs: VectorStore) -> None:
+    current = vs.count()
+    if current > 0:
+        print(f"   ⚠️  Collection unexpectedly contains {current} chunks; wiping stale data")
+        vs.delete_all()
+        print("   ✓ Stale chunks removed")
+
+
 def main() -> None:
     print("\n🏠 HomeIntel — VectorStore smoke test")
     print(f"   Chroma path   : {settings.chroma_path}")
@@ -37,6 +45,7 @@ def main() -> None:
     # ── 1. Init ───────────────────────────────────────────────────────────────
     separator("1. Initialising VectorStore")
     vs = VectorStore()
+    ensure_clean_collection(vs)
     print(f"   ✓ Connected — {vs.count()} chunks currently in collection")
 
     # ── 2. Upsert ─────────────────────────────────────────────────────────────

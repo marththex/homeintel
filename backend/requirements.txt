@@ -17,6 +17,7 @@ chromadb==0.5.23
 
 # ── Document ingestion ────────────────────────────────────────────────────────
 unstructured[pdf,docx]==0.16.10      # PDF + DOCX parsing
+pdfminer.six==20251230               # pinned because pdfminer 20260107 breaks Unstructured PDF parsing and conflicts with pdfplumber
 python-docx==1.1.2
 pypdf==5.1.0                         # fallback PDF parser
 

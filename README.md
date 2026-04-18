@@ -95,7 +95,7 @@ The NAS doesn't need a GPU. All inference runs on your PC. The NAS just stores f
 
 ---
 
-## Quick Start
+## Quick Startssh
 
 ### 1. Clone the repo
 
@@ -124,8 +124,8 @@ cp .env.example .env
 Edit `.env` with your paths:
 
 ```dotenv
-NAS_WATCH_PATH=Z:/
-CHROMA_PATH=Z:/homeintel/chroma
+NAS_WATCH_PATH=/path/to/your/nas
+CHROMA_PATH=/path/to/your/nas/chroma
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_LLM_MODEL=qwen3.5:9b
 OLLAMA_EMBED_MODEL=nomic-embed-text
@@ -141,7 +141,7 @@ ollama pull nomic-embed-text
 ### 5. Create ChromaDB directory on NAS
 
 ```powershell
-mkdir Z:\homeintel\chroma
+mkdir /path/to/your/nas/chroma
 ```
 
 ### 6. Verify the setup
