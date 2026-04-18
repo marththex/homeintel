@@ -56,7 +56,7 @@ React chat interface
 | Embeddings | [nomic-embed-text](https://ollama.com/library/nomic-embed-text) via Ollama |
 | Vector Store | [ChromaDB](https://www.trychroma.com) (persistent, on NAS) |
 | RAG Framework | [LangChain](https://langchain.com) |
-| Document Parsing | [Unstructured](https://unstructured.io) |
+| Document Parsing | [Unstructured](https://unstructured.io) + [pypdf](https://pypdf.readthedocs.io) (fallback) |
 | Image Embeddings | [OpenCLIP](https://github.com/mlfoundations/open_clip) |
 | Speech-to-Text | [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) |
 | Backend | [FastAPI](https://fastapi.tiangolo.com) |
@@ -102,6 +102,7 @@ The NAS doesn't need a GPU. All inference runs on your PC. The NAS just stores f
 ```bash
 git clone https://github.com/marththex/homeintel.git
 cd homeintel
+git checkout -b feature/your-feature
 ```
 
 ### 2. Set up the conda environment
@@ -234,6 +235,8 @@ homeintel/
 │
 └── scripts/                    # Utilities
     ├── test_vectorstore.py     # Step 2 smoke test
+    ├── test_ingestion.py       # Step 3 smoke test
+    ├── cleanup_collection.py   # Wipe all chunks (with confirmation prompt)
     └── reindex.py              # Force full reindex
 ```
 
@@ -263,10 +266,13 @@ homeintel/
 |---|---|
 | `.pdf`, `.docx`, `.txt`, `.md` | Text extracted → chunked → embedded |
 | `.yml`, `.yaml`, `.json` | Parsed as text → chunked → embedded |
-| `.png`, `.jpg`, `.jpeg` | CLIP visual embeddings + generated captions |
-| `.mp3`, `.wav` | Whisper transcription → chunked → embedded |
+| `.png`, `.jpg`, `.jpeg` | CLIP visual embeddings + generated captions *(coming soon)* |
+| `.mp3`, `.wav` | Whisper transcription → chunked → embedded *(coming soon)* |
 
-**Excluded by default:** media files, ROM files, raw footage, Docker volumes, vector store itself.
+**Excluded by default:** media files, ROM files, raw footage, vector store itself.
+
+`docker/` on the NAS is also excluded — it contains Docker Engine overlay2 storage (binary layer data),
+not user files. Actual service compose files live one level deeper, e.g. `<NAS_ROOT>/service-name/docker-compose.yml`.
 
 ---
 
@@ -282,15 +288,16 @@ homeintel/
 
 ## Roadmap
 
-- [x] ChromaDB vector store with multi-modal metadata
-- [ ] Document ingestion processor (PDF, DOCX, TXT, MD, YAML, JSON)
-- [ ] FastAPI backend + RAG chain
-- [ ] File watcher (automatic re-indexing on changes)
-- [ ] React chat interface
-- [ ] Image processor (CLIP embeddings)
-- [ ] Audio processor (Faster-Whisper)
+- [x] Step 1 — Scaffolding (Docker Compose, config, Dockerfile)
+- [x] Step 2 — ChromaDB vector store with multi-modal metadata
+- [x] Step 3 — Document ingestion processor (PDF, DOCX, TXT, MD, YAML, JSON)
+- [x] Step 4 — FastAPI backend + RAG chain
+- [ ] Step 5 — File watcher (automatic re-indexing on changes)
+- [ ] Step 6 — React chat interface
+- [ ] CI/CD pipeline
+- [ ] Step 7 — Image processor (CLIP embeddings)
+- [ ] Step 7 — Audio processor (Faster-Whisper)
 - [ ] Re-index script for bulk operations
-- [ ] Docker Compose full deployment
 
 ---
 
