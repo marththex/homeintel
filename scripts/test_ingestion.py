@@ -1,11 +1,13 @@
 """
 scripts/test_ingestion.py — Document ingestion smoke test.
 
-Run from the backend/ directory:
+Usage:
     cd backend
-    python ../scripts/test_ingestion.py
+    python ../scripts/test_ingestion.py              # ingest and clean up
+    python ../scripts/test_ingestion.py --keep-chunks # skip cleanup (for API testing)
 """
 
+import argparse
 import logging
 import os
 import re
@@ -78,7 +80,7 @@ def ensure_clean_collection(vs: VectorStore) -> None:
         print("  ✓ Stale chunks removed")
 
 
-def main() -> None:
+def main(keep_chunks: bool = False) -> None:
     ingested_paths: list[str] = []
     vs = VectorStore()
     ensure_clean_collection(vs)
@@ -139,13 +141,25 @@ def main() -> None:
     print(f"  {'total':12s}: {stats['total_chunks']}")
 
     # ── 6. Cleanup — remove all chunks ingested during this test run ──────────
-    separator("Cleanup — removing test chunks")
-    for path in ingested_paths:
-        vs.delete_file(path)
-        print(f"  deleted chunks for {Path(path).name}")
-    after = vs.count()
-    print(f"\n  Chunks remaining in collection: {after}")
+    if keep_chunks:
+        separator("Cleanup skipped (--keep-chunks)")
+        print(f"  Chunks left in collection: {vs.count()}")
+        print("  Run scripts/cleanup_collection.py when done testing.")
+    else:
+        separator("Cleanup — removing test chunks")
+        for path in ingested_paths:
+            vs.delete_file(path)
+            print(f"  deleted chunks for {Path(path).name}")
+        after = vs.count()
+        print(f"\n  Chunks remaining in collection: {after}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="HomeIntel ingestion smoke test")
+    parser.add_argument(
+        "--keep-chunks",
+        action="store_true",
+        help="Skip end-of-test cleanup so chunks persist in ChromaDB (useful for API testing).",
+    )
+    args = parser.parse_args()
+    main(keep_chunks=args.keep_chunks)

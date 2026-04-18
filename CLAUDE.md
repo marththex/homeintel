@@ -197,21 +197,39 @@ to transcribe.
 - `pdfminer.six` must stay pinned to `20251230` due to `pdfplumber` dependency conflict
 - `delete_file()` is called before every upsert to prevent duplicates
 
-### ⬜ Step 4 — FastAPI Backend + RAG Chain (TODO)
-**Target files:**
-- `backend/main.py`
-- `backend/api/chat.py`
-- `backend/api/status.py`
-- `backend/rag/chain.py`
-- `backend/rag/prompts.py`
-- `backend/rag/retriever.py`
-- `backend/models/chat.py`
+### ✅ Step 4 — FastAPI Backend + RAG Chain (COMPLETE)
+**Files created:**
+- `backend/main.py` — FastAPI entrypoint with CORS + lifespan startup check
+- `backend/api/__init__.py`
+- `backend/api/chat.py` — POST /chat
+- `backend/api/status.py` — GET /health, GET /stats
+- `backend/rag/__init__.py`
+- `backend/rag/prompts.py` — SYSTEM_TEMPLATE (answer-from-context-only)
+- `backend/rag/retriever.py` — VectorStore.query wrapper with modality filtering
+- `backend/rag/chain.py` — RAGChain class + module-level singleton
+- `backend/models/__init__.py`
+- `backend/models/chat.py` — ChatRequest, ChatResponse, SourceDoc schemas
 
-**What it should do:**
-- Single `/chat` endpoint: takes question → retrieves chunks → sends to Qwen3.5 → returns answer
-- `/health` endpoint: checks Ollama connectivity + ChromaDB status
-- `/stats` endpoint: returns collection stats (chunk counts by modality)
-- LangChain RAG chain using Ollama + ChromaDB retriever
+**Verified working (scripts/verify_api.py — 8/8 checks pass):**
+- GET /health → `{"status":"ok","ollama":true,"chromadb":true}` ✓
+- GET /stats → per-modality chunk counts ✓
+- POST /chat (resume question) → correct answer with source attribution ✓
+- POST /chat (photoprism port) → answer pulls from docker-compose.yml source ✓
+- POST /chat (weather — not in data) → correct "don't have information" refusal ✓
+- POST /chat (modality_filter=document) → all sources are document modality ✓
+- POST /chat (empty question) → HTTP 422 ✓
+- POST /chat (no body) → HTTP 422 ✓
+
+**Notes:**
+- CORS enabled for `http://localhost:3000` and `http://localhost:5173`
+- Ollama URL comes from `OLLAMA_BASE_URL` env var — use `http://host.docker.internal:11434` in Docker compose
+- RAGChain and VectorStore are module-level singletons (lazy init on first request)
+- Startup health check is controlled by `SKIP_LLM_HEALTH_CHECK=true` (useful for running without Ollama)
+- Sources include file_name, file_path, modality, and 200-char excerpt per chunk
+- `conda run -n homeintel` does not support multiline `-c` scripts; use a `.py` file instead
+- `test_ingestion.py` now accepts `--keep-chunks` to skip cleanup (for API testing)
+- `scripts/verify_api.py` starts uvicorn as a subprocess, runs 8 checks, shuts it down; exit 0 = all pass
+- Degraded-state test (Ollama down) must be run manually: stop Ollama and check `/health` returns `{"status":"degraded"}`
 
 ### ⬜ Step 5 — File Watcher (TODO)
 **Target files:**
