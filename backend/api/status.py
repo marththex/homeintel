@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter
 
 from config import settings
-from vectorstore.chroma import VectorStore
+from vectorstore.qdrant import VectorStore
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,7 +27,7 @@ def _get_vs() -> VectorStore:
 @router.get("/health")
 async def health() -> dict:
     """
-    Check Ollama connectivity and ChromaDB accessibility.
+    Check Ollama connectivity and Qdrant accessibility.
 
     Returns status "ok" only if both services are reachable.
     Returns status "degraded" if either is down.
@@ -40,21 +40,21 @@ async def health() -> dict:
     except Exception as exc:
         logger.debug("Ollama health check failed: %s", exc)
 
-    chroma_ok = False
+    qdrant_ok = False
     try:
         _get_vs().count()
-        chroma_ok = True
+        qdrant_ok = True
     except Exception as exc:
-        logger.debug("ChromaDB health check failed: %s", exc)
+        logger.debug("Qdrant health check failed: %s", exc)
 
     return {
-        "status": "ok" if (ollama_ok and chroma_ok) else "degraded",
+        "status": "ok" if (ollama_ok and qdrant_ok) else "degraded",
         "ollama": ollama_ok,
-        "chromadb": chroma_ok,
+        "qdrant": qdrant_ok,
     }
 
 
 @router.get("/stats")
 async def stats() -> dict:
-    """Return per-modality chunk counts from ChromaDB."""
+    """Return per-modality chunk counts from Qdrant."""
     return _get_vs().stats()

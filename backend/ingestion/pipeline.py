@@ -15,7 +15,7 @@ from typing import Optional
 from langchain_core.documents import Document
 
 from config import settings
-from vectorstore.chroma import VectorStore, Modality
+from vectorstore.qdrant import VectorStore, Modality
 from ingestion.processors.document import parse_document
 from ingestion.chunker import chunk_text
 
@@ -35,7 +35,7 @@ def _get_vs() -> VectorStore:
 
 def ingest_file(path: str) -> int:
     """
-    Ingest a single file into ChromaDB.
+    Ingest a single file into Qdrant.
 
     Parses the file, chunks the text, generates embeddings, and upserts
     into the vector store with full metadata.

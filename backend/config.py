@@ -45,14 +45,42 @@ class Settings(BaseSettings):
         description="Comma-separated absolute paths to exclude from the watcher.",
     )
 
-    # ── ChromaDB ──────────────────────────────────────────────────────────────
-    chroma_path: Path = Field(
-        default=Path("/data/chroma"),
-        description="Directory where ChromaDB persists its data.",
+    # ── Qdrant ────────────────────────────────────────────────────────────────
+    qdrant_url: str = Field(
+        default="http://localhost:6333",
+        description="URL of the Qdrant server (REST API).",
     )
-    chroma_collection_name: str = Field(
+    qdrant_collection_name: str = Field(
         default="homeintel",
-        description="Name of the ChromaDB collection.",
+        description="Name of the Qdrant collection.",
+    )
+    qdrant_api_key: str = Field(
+        default="",
+        description="Qdrant API key — leave empty if auth is disabled.",
+    )
+    embed_dim: int = Field(
+        default=768,
+        description="Output dimension of the embedding model (nomic-embed-text = 768).",
+    )
+
+    # ── Reranker ──────────────────────────────────────────────────────────────
+    reranker_enabled: bool = Field(
+        default=True,
+        description="Apply cross-encoder reranking after hybrid retrieval.",
+    )
+    reranker_model: str = Field(
+        default="BAAI/bge-reranker-v2-m3",
+        description="HuggingFace model ID for the cross-encoder reranker.",
+    )
+
+    # ── Docling VLM enrichment ────────────────────────────────────────────────
+    docling_vlm_enabled: bool = Field(
+        default=False,
+        description="Enable Docling VLM picture description during ingestion.",
+    )
+    docling_vlm_model: str = Field(
+        default="Qwen/Qwen2.5-VL-7B-Instruct",
+        description="HuggingFace model ID for Docling VLM enrichment.",
     )
 
     # ── Ollama ────────────────────────────────────────────────────────────────

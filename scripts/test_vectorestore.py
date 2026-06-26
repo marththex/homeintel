@@ -1,31 +1,30 @@
 """
-scripts/test_vectorstore.py — Smoke test for the ChromaDB wrapper.
+scripts/test_vectorstore.py — Smoke test for the Qdrant vectorstore wrapper.
 
-Run this before moving to Step 3 to confirm:
-  - ChromaDB can write to your NAS path
+Run this after deploying Qdrant on the NAS to confirm:
+  - Qdrant is reachable at QDRANT_URL
   - Ollama embedding model is reachable
-  - Upsert, query, and delete all work correctly
+  - Upsert, hybrid query, modality filtering, and delete all work correctly
 
 Usage (from repo root):
     cd backend
-    python ../scripts/test_vectorstore.py
+    python ../scripts/test_vectorestore.py
 """
 
 import sys
 import os
 
-# Allow imports from backend/
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 from langchain_core.documents import Document
-from vectorstore.chroma import VectorStore, Modality
+from vectorstore.qdrant import VectorStore, Modality
 from config import settings
 
 
 def separator(title: str) -> None:
     print(f"\n{'─' * 50}")
     print(f"  {title}")
-    print('─' * 50)
+    print("─" * 50)
 
 
 def ensure_clean_collection(vs: VectorStore) -> None:
@@ -37,8 +36,9 @@ def ensure_clean_collection(vs: VectorStore) -> None:
 
 
 def main() -> None:
-    print("\n🏠 HomeIntel — VectorStore smoke test")
-    print(f"   Chroma path   : {settings.chroma_path}")
+    print("\n HomeIntel — Qdrant VectorStore smoke test")
+    print(f"   Qdrant URL    : {settings.qdrant_url}")
+    print(f"   Collection    : {settings.qdrant_collection_name}")
     print(f"   Embed model   : {settings.ollama_embed_model}")
     print(f"   Ollama URL    : {settings.ollama_base_url_str}")
 
@@ -49,7 +49,7 @@ def main() -> None:
     print(f"   ✓ Connected — {vs.count()} chunks currently in collection")
 
     # ── 2. Upsert ─────────────────────────────────────────────────────────────
-    separator("2. Upserting test documents")
+    separator("2. Upserting test documents (dense + sparse vectors)")
     test_docs = [
         Document(
             page_content="The Nextcloud container runs on port 443 and uses PostgreSQL.",
@@ -86,44 +86,53 @@ def main() -> None:
     print(f"   ✓ Upserted {len(test_docs)} test chunks")
     print(f"   ✓ Collection now has {vs.count()} chunks")
 
-    # ── 3. Query — no filter ──────────────────────────────────────────────────
-    separator("3. Query (no filter)")
+    # ── 3. Hybrid query — no filter ───────────────────────────────────────────
+    separator("3. Hybrid query (dense + BM25 RRF, no filter)")
     results = vs.query("docker containers and ports", top_k=3)
-    print(f"   Query: 'docker containers and ports'")
+    print("   Query: 'docker containers and ports'")
     for i, doc in enumerate(results):
         print(f"   [{i+1}] {doc.metadata['file_name']} — {doc.page_content[:60]}...")
 
-    # ── 4. Query — modality filter ────────────────────────────────────────────
-    separator("4. Query (images only)")
+    # ── 4. Hybrid query — modality filter ─────────────────────────────────────
+    separator("4. Hybrid query (images only)")
     results = vs.query("outdoor nature photo", top_k=3, modality=Modality.IMAGE)
-    print(f"   Query: 'outdoor nature photo' (images only)")
+    print("   Query: 'outdoor nature photo' (modality=image)")
+    if not results:
+        print("   (no results — expected if collection is small)")
     for i, doc in enumerate(results):
         print(f"   [{i+1}] {doc.metadata['file_name']} — {doc.page_content[:60]}...")
 
-    # ── 5. Stats ──────────────────────────────────────────────────────────────
-    separator("5. Stats")
+    # ── 5. Query with scores ──────────────────────────────────────────────────
+    separator("5. Query with RRF scores")
+    scored = vs.query_with_scores("budget meeting", top_k=3)
+    for i, (doc, score) in enumerate(scored):
+        print(f"   [{i+1}] score={score:.4f}  {doc.metadata['file_name']}")
+
+    # ── 6. Stats ──────────────────────────────────────────────────────────────
+    separator("6. Stats")
     stats = vs.stats()
     print(f"   Total chunks : {stats['total_chunks']}")
+    print(f"   Qdrant URL   : {stats['qdrant_url']}")
     for modality, count in stats["by_modality"].items():
         print(f"   {modality:<12} : {count} chunks")
 
-    # ── 6. Delete ─────────────────────────────────────────────────────────────
-    separator("6. Delete test file")
+    # ── 7. Delete one file ────────────────────────────────────────────────────
+    separator("7. Delete test file")
     vs.delete_file("/test/docker-compose.yml")
     print(f"   ✓ Deleted chunks for docker-compose.yml")
     print(f"   ✓ Collection now has {vs.count()} chunks")
 
-    # ── 7. Cleanup ────────────────────────────────────────────────────────────
-    separator("7. Cleanup — removing all test data")
+    # ── 8. Cleanup ────────────────────────────────────────────────────────────
+    separator("8. Cleanup — removing all test data")
     for doc in test_docs:
         try:
             vs.delete_file(doc.metadata["file_path"])
         except Exception:
             pass
-    print(f"   ✓ Collection restored to 0 test chunks")
+    print(f"   ✓ Collection restored to {vs.count()} chunks")
 
     separator("All tests passed ✓")
-    print("   Ready to move to Step 3 — ingestion processors\n")
+    print("   Qdrant hybrid search is working — ready for Step 3 ingestion\n")
 
 
 if __name__ == "__main__":
@@ -132,7 +141,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Test failed: {e}")
         print("\nCommon causes:")
+        print("  - Qdrant not running on NAS (deploy docker/qdrant.yml first)")
+        print(f"  - QDRANT_URL not set correctly: {settings.qdrant_url}")
         print("  - Ollama isn't running (start it with: ollama serve)")
         print(f"  - Embedding model not pulled (run: ollama pull {settings.ollama_embed_model})")
-        print(f"  - Chroma path not accessible: {settings.chroma_path}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)

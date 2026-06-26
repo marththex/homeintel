@@ -1,15 +1,13 @@
 version: "3.9"
 
-# ── HomeIntel — Docker Compose ────────────────────────────────────────────────
+# ── HomeIntel — Docker Compose (PC services) ──────────────────────────────────
 #
 # Before starting:
-#   1. cp .env.example .env  and fill in NAS_WATCH_PATH
+#   1. cp .env.example .env  and fill in NAS_WATCH_PATH, QDRANT_URL
 #   2. docker compose up -d
 #
-# Volumes that persist on your NAS:
-#   - NAS_WATCH_PATH          → the files being indexed (read-only)
-#   - ./data/chroma           → vector store (read-write)
-#   - ./data/ollama           → downloaded LLM weights (read-write)
+# Qdrant runs on the NAS — see docker/qdrant.yml for the NAS-side service.
+# The API connects to it via QDRANT_URL (network call, not a volume mount).
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -39,8 +37,6 @@ services:
       start_period: 30s
 
   # ── Model bootstrap (runs once, then exits) ─────────────────────────────────
-  # Pulls the LLM and embedding model on first startup so the API
-  # doesn't time out waiting on a cold pull.
   model-pull:
     image: ollama/ollama:latest
     container_name: homeintel-model-pull
@@ -71,7 +67,6 @@ services:
     env_file: .env
     volumes:
       - ${NAS_WATCH_PATH:-./data/sample-files}:/data/files:ro   # NAS mount (read-only)
-      - chroma-data:/data/chroma                                 # vector store
     ports:
       - "${API_PORT:-8000}:8000"
     healthcheck:
@@ -102,11 +97,4 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: ${OLLAMA_MODELS_PATH:-./data/ollama}   # override in .env to put on NAS
-
-  chroma-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${CHROMA_PATH:-./data/chroma}
+      device: ${OLLAMA_MODELS_PATH:-./data/ollama}

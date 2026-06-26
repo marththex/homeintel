@@ -2,12 +2,18 @@
 ingestion/processors/document.py — Parse documents into raw text.
 
 Supported extensions:
-  .pdf  .docx  → Unstructured (with pypdf fallback for PDF)
+  .pdf  .docx  → Docling (structured markdown output)
   .txt  .md    → plain file read
   .yml  .yaml  → PyYAML → formatted key-value text
   .json        → json → formatted key-value text
 
 Returns (text, title) where title may be None.
+
+Docling notes:
+  - Produces markdown from PDF/DOCX, preserving headings, tables, and lists.
+  - Optional VLM picture description is gated by DOCLING_VLM_ENABLED in .env
+    (default False); requires VRAM alongside qwen3.5:9b + nomic-embed-text.
+  - No pypdf fallback needed — Docling uses its own PDF pipeline.
 """
 
 import json
@@ -26,8 +32,8 @@ def parse_document(path: Path) -> tuple[str, Optional[str]]:
     """Parse a document file and return (full_text, title_or_None)."""
     ext = path.suffix.lower()
     parsers = {
-        ".pdf":  _parse_pdf,
-        ".docx": _parse_docx,
+        ".pdf":  _parse_with_docling,
+        ".docx": _parse_with_docling,
         ".txt":  _parse_text,
         ".md":   _parse_text,
         ".yml":  _parse_yaml,
@@ -42,34 +48,23 @@ def parse_document(path: Path) -> tuple[str, Optional[str]]:
 
 # ── Parsers ───────────────────────────────────────────────────────────────────
 
-def _parse_pdf(path: Path) -> tuple[str, Optional[str]]:
-    try:
-        from unstructured.partition.pdf import partition_pdf
-        elements = partition_pdf(filename=str(path), strategy="fast")
-        text = "\n\n".join(str(e) for e in elements if str(e).strip())
-        title = _first_title(elements)
-        logger.debug("PDF parsed via Unstructured: %s (%d elements)", path.name, len(elements))
-        return text, title
-    except Exception as exc:
-        logger.warning("Unstructured PDF failed for %s (%s), falling back to pypdf", path.name, exc)
-        return _parse_pdf_fallback(path)
+def _parse_with_docling(path: Path) -> tuple[str, Optional[str]]:
+    """Parse PDF or DOCX with Docling, exporting structured markdown."""
+    from docling.document_converter import DocumentConverter
 
+    converter = _get_converter()
+    result = converter.convert(source=str(path))
+    doc = result.document
 
-def _parse_pdf_fallback(path: Path) -> tuple[str, Optional[str]]:
-    from pypdf import PdfReader
-    reader = PdfReader(str(path))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    text = "\n\n".join(p for p in pages if p.strip())
-    return text, None
+    markdown = doc.export_to_markdown()
+    title = _extract_title_from_markdown(markdown) or path.stem
 
-
-def _parse_docx(path: Path) -> tuple[str, Optional[str]]:
-    from unstructured.partition.docx import partition_docx
-    elements = partition_docx(filename=str(path))
-    text = "\n\n".join(str(e) for e in elements if str(e).strip())
-    title = _first_title(elements)
-    logger.debug("DOCX parsed via Unstructured: %s (%d elements)", path.name, len(elements))
-    return text, title
+    logger.debug(
+        "Docling parsed %s — %d chars of markdown",
+        path.name,
+        len(markdown),
+    )
+    return markdown, title
 
 
 def _parse_text(path: Path) -> tuple[str, Optional[str]]:
@@ -99,13 +94,66 @@ def _parse_json(path: Path) -> tuple[str, Optional[str]]:
     return text, None
 
 
+# ── Docling converter singleton ───────────────────────────────────────────────
+
+_converter = None
+
+
+def _get_converter():
+    """Return a lazily-initialised DocumentConverter (module-level singleton)."""
+    global _converter
+    if _converter is not None:
+        return _converter
+
+    from config import settings
+
+    if settings.docling_vlm_enabled:
+        # VLM enrichment: Docling runs picture description via the configured
+        # VLM model (default Qwen2.5-VL-7B-Instruct). Requires VRAM headroom
+        # alongside Ollama's loaded models. See CLAUDE.md for VRAM notes.
+        try:
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import (
+                PdfPipelineOptions,
+                PictureDescriptionApiOptions,
+            )
+
+            pipeline_options = PdfPipelineOptions(
+                do_picture_description=True,
+                picture_description_options=PictureDescriptionApiOptions(
+                    url=f"{settings.ollama_base_url_str}/v1/chat/completions",
+                    model_id=settings.docling_vlm_model,
+                ),
+            )
+            _converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
+            logger.info("Docling VLM enrichment enabled — model=%s", settings.docling_vlm_model)
+        except Exception as exc:
+            logger.warning(
+                "Docling VLM setup failed (%s) — falling back to standard converter", exc
+            )
+            from docling.document_converter import DocumentConverter
+            _converter = DocumentConverter()
+    else:
+        from docling.document_converter import DocumentConverter
+        _converter = DocumentConverter()
+        logger.debug("Docling initialised (VLM disabled)")
+
+    return _converter
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _first_title(elements) -> Optional[str]:
-    """Extract the first Title element from an Unstructured element list."""
-    for el in elements:
-        if getattr(el, "category", None) == "Title" and str(el).strip():
-            return str(el).strip()
+def _extract_title_from_markdown(md: str) -> Optional[str]:
+    """Return text of the first ATX heading (# Heading) if present."""
+    for line in md.splitlines():
+        stripped = line.lstrip("#").strip()
+        if line.startswith("#") and stripped:
+            return stripped
     return None
 
 

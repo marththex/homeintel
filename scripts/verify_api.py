@@ -2,7 +2,7 @@
 scripts/verify_api.py — Automated integration tests for the HomeIntel FastAPI backend.
 
 Prerequisites:
-    1. Populate ChromaDB with test data:
+    1. Populate Qdrant with test data:
            cd backend
            python ../scripts/test_ingestion.py --keep-chunks
     2. Run this script from the same directory:
@@ -82,10 +82,10 @@ def _run(fn) -> Result:
 
 
 def check_health() -> Result:
-    name = "GET /health → {status:ok, ollama:true, chromadb:true}"
+    name = "GET /health → {status:ok, ollama:true, qdrant:true}"
     resp = httpx.get(f"{BASE_URL}/health", timeout=10)
     body = resp.json()
-    expected = {"status": "ok", "ollama": True, "chromadb": True}
+    expected = {"status": "ok", "ollama": True, "qdrant": True}
     if resp.status_code == 200 and body == expected:
         return Result(name, passed=True)
     return Result(name, passed=False, detail=f"got HTTP {resp.status_code}: {body}")

@@ -1,0 +1,31 @@
+version: "3.9"
+
+# ── Qdrant — NAS-side Docker Compose ─────────────────────────────────────────
+#
+# Deploy this on TrueNAS (copy to <NAS_ROOT>/docker/qdrant/).
+# The PC backend connects to it via QDRANT_URL=http://<NAS_IP>:6333
+#
+# Start:
+#   docker compose -f qdrant.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API (used by Python client)
+      - "6334:6334"   # gRPC (optional)
+    volumes:
+      - ./qdrant_storage:/qdrant/storage   # persists on NAS storage
+    environment:
+      # Set QDRANT_API_KEY in .env if you enable auth.
+      # Leave empty (default) for no auth on a trusted LAN.
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

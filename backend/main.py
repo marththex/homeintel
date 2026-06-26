@@ -20,9 +20,10 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(levelname)-8s %(name)s — %(message)s",
 )
-logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("qdrant_client").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("unstructured").setLevel(logging.WARNING)
+logging.getLogger("docling").setLevel(logging.WARNING)
+logging.getLogger("fastembed").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 

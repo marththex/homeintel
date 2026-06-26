@@ -22,13 +22,14 @@ logging.basicConfig(
     format="%(levelname)-8s %(name)s — %(message)s",
 )
 # Quiet noisy third-party loggers
-logging.getLogger("unstructured").setLevel(logging.WARNING)
-logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("docling").setLevel(logging.WARNING)
+logging.getLogger("qdrant_client").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("fastembed").setLevel(logging.WARNING)
 
 from config import settings
 from ingestion.pipeline import ingest_file
-from vectorstore.chroma import VectorStore
+from vectorstore.qdrant import VectorStore
 
 
 _HEX_DIR = re.compile(r"^[0-9a-f]{40,}$")
@@ -159,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--keep-chunks",
         action="store_true",
-        help="Skip end-of-test cleanup so chunks persist in ChromaDB (useful for API testing).",
+        help="Skip end-of-test cleanup so chunks persist in Qdrant (useful for API testing).",
     )
     args = parser.parse_args()
     main(keep_chunks=args.keep_chunks)
