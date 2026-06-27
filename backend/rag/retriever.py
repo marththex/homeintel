@@ -10,6 +10,7 @@ Flow:
 """
 
 import logging
+import math
 from typing import Optional
 
 from langchain_core.documents import Document
@@ -94,8 +95,12 @@ def retrieve(
 
     # Rerank the full candidate set (cost is the same — it scores all pairs
     # either way) so dedup downstream has enough material to fill final_k.
+    # For image queries, also drop weak matches below the relevance threshold.
     if settings.reranker_enabled and len(docs) > 1:
-        docs = _rerank(question, docs, len(docs))
+        min_score = (
+            settings.image_rerank_min_score if modality == Modality.IMAGE else None
+        )
+        docs = _rerank(question, docs, len(docs), min_score=min_score)
 
     # One result per photo for image queries — collapse duplicate file_paths.
     if modality == Modality.IMAGE:
@@ -149,13 +154,40 @@ def _merge_colpali(
         return text_docs
 
 
-def _rerank(question: str, docs: list[Document], top_k: int) -> list[Document]:
-    """Score (question, chunk) pairs with a cross-encoder and return top_k."""
+def _sigmoid(x: float) -> float:
+    """Numerically stable logistic — maps a reranker logit to a 0..1 relevance."""
+    if x >= 0:
+        return 1.0 / (1.0 + math.exp(-x))
+    e = math.exp(x)
+    return e / (1.0 + e)
+
+
+def _rerank(
+    question: str,
+    docs: list[Document],
+    top_k: int,
+    min_score: Optional[float] = None,
+) -> list[Document]:
+    """
+    Score (question, chunk) pairs with a cross-encoder and return top_k.
+
+    If min_score is given, drop results whose relevance (sigmoid of the
+    cross-encoder logit) is below it — but always keep at least one so the
+    response is never empty.
+    """
     try:
         reranker = _get_reranker()
         pairs = [(question, doc.page_content) for doc in docs]
         scores = reranker.predict(pairs)
-        ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+        ranked = sorted(zip(scores, docs), key=lambda x: float(x[0]), reverse=True)
+
+        if min_score is not None:
+            kept = [(s, d) for s, d in ranked if _sigmoid(float(s)) >= min_score]
+            dropped = len(ranked) - len(kept)
+            ranked = kept if kept else ranked[:1]  # never return nothing
+            if dropped:
+                logger.debug("Relevance threshold dropped %d weak match(es)", dropped)
+
         return [doc for _, doc in ranked[:top_k]]
     except Exception as exc:
         logger.warning("Reranker failed (%s) — returning unranked top_k", exc)

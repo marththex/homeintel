@@ -72,6 +72,14 @@ class Settings(BaseSettings):
         default="BAAI/bge-reranker-v2-m3",
         description="HuggingFace model ID for the cross-encoder reranker.",
     )
+    image_rerank_min_score: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="For image queries only: drop photos whose reranker relevance "
+                    "(sigmoid of the cross-encoder score) is below this. Higher = "
+                    "stricter/fewer results. At least one result is always kept.",
+    )
 
     # ── Docling VLM enrichment ────────────────────────────────────────────────
     docling_vlm_enabled: bool = Field(
