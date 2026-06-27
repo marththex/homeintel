@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { fileUrl } from "../api";
 
 export interface CarouselPhoto {
@@ -58,7 +59,9 @@ export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
       </div>
 
       {shown[active]?.caption && (
-        <p className="carousel-active-caption">{shown[active].caption}</p>
+        <div className="carousel-active-caption markdown">
+          <ReactMarkdown>{shown[active].caption}</ReactMarkdown>
+        </div>
       )}
 
       <div className="carousel-footer">
