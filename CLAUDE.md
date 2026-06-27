@@ -65,8 +65,8 @@ File lives at repo root: `<repo>/.env`
 
 ```dotenv
 NAS_WATCH_PATH=/path/to/your/nas
-SUPPORTED_EXTENSIONS=.pdf,.docx,.txt,.md,.yml,.yaml,.json,.png,.jpg,.jpeg,.mp3,.wav
-WATCHER_EXCLUDE_PATHS=<NAS_ROOT>/homeintel/qdrant_storage,<NAS_ROOT>/media,<NAS_ROOT>/plex_config,<NAS_ROOT>/roms,<NAS_ROOT>/ai_videos,<NAS_ROOT>/wedding_raw_videos,<NAS_ROOT>/palworld,<NAS_ROOT>/qbittorrent
+SUPPORTED_EXTENSIONS=.pdf,.docx,.txt,.md,.yml,.yaml,.json,.png,.jpg,.jpeg
+WATCHER_EXCLUDE_PATHS=<NAS_ROOT>/homeintel/qdrant_storage,<NAS_ROOT>/docker,<NAS_ROOT>/media,<NAS_ROOT>/plex_config,<NAS_ROOT>/roms,<NAS_ROOT>/ai_videos,<NAS_ROOT>/wedding_raw_videos,<NAS_ROOT>/palworld,<NAS_ROOT>/qbittorrent,<NAS_ROOT>/marcus_photoprism,<NAS_ROOT>/Music
 QDRANT_URL=http://<NAS_IP>:6333
 QDRANT_COLLECTION_NAME=homeintel
 QDRANT_API_KEY=
@@ -143,7 +143,8 @@ Notable directories on the NAS:
 ├── cloudflared/        ← Cloudflare tunnel config
 ├── Wedding_Contracts/  ← PDF documents
 ├── Marcus_Resume.pdf   ← PDF at root
-├── music/              ← Audio files
+├── Music/              ← EXCLUDED (audio — Whisper too slow for full library)
+├── marcus_photoprism/  ← EXCLUDED (PhotoPrism service dir — photos + YAML sidecars, not user docs)
 ├── media/              ← EXCLUDED (movies/TV - too large to index)
 ├── roms/               ← EXCLUDED (game ROMs)
 ├── plex_config/        ← EXCLUDED (Plex binary data)
@@ -156,6 +157,11 @@ Notable directories on the NAS:
 Video files (.mp4, .mov) are intentionally excluded from indexing — the NAS has
 52 movies, 15 TV shows, and a large One Pace collection that would take too long
 to transcribe.
+
+Audio files (.mp3, .wav) are excluded from `SUPPORTED_EXTENSIONS` — the Music
+library is too large to transcribe in a reasonable time with Faster-Whisper. Can
+be re-enabled by adding `.mp3,.wav` back to `SUPPORTED_EXTENSIONS` and removing
+`Z:/Music` from `WATCHER_EXCLUDE_PATHS`, then running `reindex.py` overnight.
 
 ---
 
@@ -440,3 +446,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 11. **SMB mount persistence** — `net use Z: \\YOUR_NAS_HOST\NFSdocker /persistent:yes`
     persists across reboots. Replace `YOUR_NAS_HOST` with your TrueNAS IP or hostname.
+
+12. **SMB PermissionError on some NAS files** — some files are visible in directory
+    listings but not readable over SMB due to TrueNAS ACLs. Fix by running
+    `chmod -R a+rX /mnt/Pool/NFSdocker` on the TrueNAS shell. The `X` (capital)
+    only adds execute on directories, not files. `reindex.py` catches `PermissionError`
+    and treats it as a skip (not an error) so the rest of the index continues.
+
+13. **reindex.py always does a full re-process** — there is no incremental/skip logic.
+    Every file is `delete_file()` + `ingest_file()` on every run. This is intentional:
+    the watcher handles day-to-day updates; `reindex.py` is a recovery tool. Incremental
+    skipping would be wrong after chunking/embedding setting changes anyway.

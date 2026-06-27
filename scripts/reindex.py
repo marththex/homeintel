@@ -149,9 +149,10 @@ def main() -> None:
             # Unsupported extension or vision model not configured — expected skip
             skipped += 1
             print(f"{prefix} SKIP  {rel}  ({exc})")
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError) as exc:
             skipped += 1
-            print(f"{prefix} SKIP  {rel}  (file vanished)")
+            reason = "file vanished" if isinstance(exc, FileNotFoundError) else "permission denied"
+            print(f"{prefix} SKIP  {rel}  ({reason})")
         except Exception as exc:
             errors += 1
             print(f"{prefix} ERROR {rel}  — {exc}")

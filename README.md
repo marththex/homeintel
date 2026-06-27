@@ -308,7 +308,7 @@ homeintel/
 | Variable | Default | Description |
 |---|---|---|
 | `NAS_WATCH_PATH` | `/data/files` | Root path to watch and index |
-| `SUPPORTED_EXTENSIONS` | `.pdf,.docx,...` | Comma-separated extensions |
+| `SUPPORTED_EXTENSIONS` | `.pdf,.docx,.txt,.md,.yml,.yaml,.json,.png,.jpg,.jpeg` | Comma-separated extensions (audio excluded by default — too slow) |
 | `WATCHER_EXCLUDE_PATHS` | `` | Comma-separated paths to skip |
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant REST API URL |
 | `QDRANT_COLLECTION_NAME` | `homeintel` | Collection name |
@@ -363,7 +363,7 @@ homeintel/
 - [x] Step 6 — React chat interface (dark theme, source attribution, modality filter)
 - [x] Step 7 — ColPali visual retrieval (batch PDF indexer, MaxSim Qdrant search)
 - [x] Step 8 — Image & audio processors (vision caption + Whisper transcription)
-- [ ] Full reindex script (bulk ingest existing NAS contents)
+- [x] Full reindex script (bulk ingest existing NAS contents)
 - [ ] CI/CD pipeline
 
 ---
