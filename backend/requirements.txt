@@ -16,7 +16,7 @@ qdrant-client[fastembed]>=1.9.0         # Qdrant client + fastembed for sparse B
 
 # ── Document ingestion ────────────────────────────────────────────────────────
 docling>=2.0.0                          # PDF + DOCX parsing, replaces Unstructured
-transformers>=5.0.0                     # required by docling for rt_detr_v2 layout model
+transformers>=5.0.0                     # docling layout model + CLIP visual similarity (openai/clip-vit-large-patch14)
 
 # ── Retrieval / reranking ─────────────────────────────────────────────────────
 sentence-transformers>=3.0.0            # CrossEncoder for bge-reranker-v2-m3

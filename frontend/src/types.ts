@@ -13,6 +13,9 @@ export interface ChatMessage {
   chunks_used?: number;
   model?: string;
   error?: boolean;
+  // Visual search
+  visualResults?: VisualResult[];
+  queryImageUrl?: string;
 }
 
 export interface StatsResponse {
@@ -26,4 +29,14 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   ollama: boolean;
   qdrant: boolean;
+}
+
+export interface VisualResult {
+  file_path: string;
+  file_name: string;
+  score: number;
+}
+
+export interface VisualSearchResponse {
+  results: VisualResult[];
 }

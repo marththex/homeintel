@@ -1,4 +1,5 @@
 import { SourceList } from "./SourceList";
+import { VisualSearchResult } from "./VisualSearchResult";
 import type { ChatMessage as Msg } from "../types";
 
 interface Props {
@@ -11,7 +12,16 @@ export function ChatMessage({ message }: Props) {
   return (
     <div className={`message ${isUser ? "message-user" : "message-assistant"}`}>
       <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"} ${message.error ? "bubble-error" : ""}`}>
+        {message.queryImageUrl && (
+          <img src={message.queryImageUrl} alt="Uploaded" className="query-image-preview" />
+        )}
         <p className="bubble-text">{message.content}</p>
+        {!isUser && message.visualResults !== undefined && message.queryImageUrl && (
+          <VisualSearchResult
+            results={message.visualResults}
+            queryImageUrl={message.queryImageUrl}
+          />
+        )}
         {!isUser && message.sources && <SourceList sources={message.sources} />}
         {!isUser && message.chunks_used !== undefined && (
           <p className="bubble-meta">{message.chunks_used} chunks · {message.model}</p>

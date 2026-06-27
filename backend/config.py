@@ -144,6 +144,12 @@ class Settings(BaseSettings):
         description="HuggingFace model ID for ColPali page embeddings.",
     )
 
+    # ── CLIP visual similarity ────────────────────────────────────────────────
+    clip_model: str = Field(
+        default="openai/clip-vit-large-patch14",
+        description="HuggingFace model ID for CLIP visual embeddings.",
+    )
+
     # ── Dev helpers ───────────────────────────────────────────────────────────
     skip_llm_health_check: bool = Field(
         default=False,

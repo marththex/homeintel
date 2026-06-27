@@ -1,0 +1,170 @@
+"""
+vectorstore/clip.py — CLIP-based visual similarity store.
+
+Uses openai/clip-vit-large-patch14 (768-dim) to embed photos as dense
+vectors in a sibling Qdrant collection `homeintel_visual`.
+
+Separate from the caption-based `homeintel` collection — encodes raw
+image pixels, enabling query-by-photo ("find photos that look like this").
+"""
+
+import hashlib
+import io
+import logging
+import uuid
+from pathlib import Path
+from typing import Any
+
+import torch
+from PIL import Image
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    FilterSelector,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
+from transformers import CLIPModel, CLIPProcessor
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+_CLIP_DIM       = 768
+_VECTOR_NAME    = "clip"
+_SCORE_THRESHOLD = 0.70
+_COLLECTION_SUFFIX = "_visual"
+
+
+def _collection_name() -> str:
+    return f"{settings.qdrant_collection_name}{_COLLECTION_SUFFIX}"
+
+
+def _point_id(file_path: str) -> str:
+    """One point per photo — stable UUID from file path."""
+    hex32 = hashlib.md5(file_path.encode()).hexdigest()
+    return str(uuid.UUID(hex32))
+
+
+class CLIPVisualStore:
+    """
+    Qdrant collection backed by CLIP image embeddings.
+
+    One point per photo (no chunking — images are atomic).
+    Metadata: file_path, file_name, created_at.
+    """
+
+    def __init__(self) -> None:
+        self._client = self._build_client()
+        self._model, self._processor = self._load_clip()
+        self._ensure_collection()
+        count = self._client.count(_collection_name()).count
+        logger.info(
+            "CLIPVisualStore ready — collection=%s count=%d",
+            _collection_name(), count,
+        )
+
+    def _build_client(self) -> QdrantClient:
+        kwargs: dict[str, Any] = {"url": settings.qdrant_url}
+        if settings.qdrant_api_key:
+            kwargs["api_key"] = settings.qdrant_api_key
+        return QdrantClient(**kwargs)
+
+    def _load_clip(self) -> tuple[CLIPModel, CLIPProcessor]:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_id = settings.clip_model
+        logger.info("Loading CLIP model %s on %s", model_id, device)
+        model = CLIPModel.from_pretrained(model_id).to(device)
+        processor = CLIPProcessor.from_pretrained(model_id)
+        model.eval()
+        logger.info("CLIP model loaded")
+        return model, processor
+
+    def _ensure_collection(self) -> None:
+        existing = {c.name for c in self._client.get_collections().collections}
+        if _collection_name() in existing:
+            return
+        self._client.create_collection(
+            collection_name=_collection_name(),
+            vectors_config={
+                _VECTOR_NAME: VectorParams(size=_CLIP_DIM, distance=Distance.COSINE)
+            },
+        )
+        logger.info("Created CLIP collection: %s", _collection_name())
+
+    def _embed_image(self, img: Image.Image) -> list[float]:
+        device = next(self._model.parameters()).device
+        inputs = self._processor(images=img, return_tensors="pt").to(device)
+        with torch.no_grad():
+            feats = self._model.get_image_features(**inputs)
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+        return feats[0].cpu().tolist()
+
+    # ── Write ─────────────────────────────────────────────────────────────────
+
+    def upsert(self, file_path: str, img: Image.Image) -> None:
+        """Embed one image and upsert into the visual collection."""
+        vec = self._embed_image(img)
+        p = Path(file_path)
+        from datetime import datetime, timezone
+        point = PointStruct(
+            id=_point_id(file_path),
+            vector={_VECTOR_NAME: vec},
+            payload={
+                "file_path": file_path,
+                "file_name": p.name,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        self._client.upsert(collection_name=_collection_name(), points=[point])
+
+    def delete_file(self, file_path: str) -> None:
+        self._client.delete(
+            collection_name=_collection_name(),
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[FieldCondition(key="file_path", match=MatchValue(value=file_path))]
+                )
+            ),
+        )
+
+    def delete_all(self) -> None:
+        self._client.delete_collection(_collection_name())
+        self._ensure_collection()
+        logger.warning("Visual collection wiped")
+
+    # ── Read ──────────────────────────────────────────────────────────────────
+
+    def search(self, image_bytes: bytes, top_k: int = 10) -> list[dict]:
+        """
+        Find the most visually similar photos to the uploaded image.
+        Returns results with score >= _SCORE_THRESHOLD, ranked by cosine similarity.
+        """
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        vec = self._embed_image(img)
+
+        response = self._client.query_points(
+            collection_name=_collection_name(),
+            query=vec,
+            using=_VECTOR_NAME,
+            limit=top_k,
+            with_payload=True,
+            score_threshold=_SCORE_THRESHOLD,
+        )
+        return [
+            {
+                "file_path": p.payload["file_path"],
+                "file_name": p.payload["file_name"],
+                "score": p.score,
+            }
+            for p in response.points
+        ]
+
+    def count(self) -> int:
+        try:
+            return self._client.count(_collection_name()).count
+        except Exception:
+            return 0

@@ -345,6 +345,60 @@ verified working (SMB write, embeddings, upsert/query/delete). It has been
 - Audio: faster-whisper transcription (GPU, lazy singleton, `WHISPER_MODEL_SIZE`) → text chunks → embeddings
 - Both integrated into `pipeline.py` routing — watcher auto-ingests images/audio on file events
 
+### ✅ Step 9 — CLIP Visual Similarity + UI Improvements (COMPLETE)
+**Files created/modified:**
+- `backend/vectorstore/clip.py` — CLIPVisualStore class (openai/clip-vit-large-patch14, 768-dim)
+- `backend/api/files.py` — GET /file (NAS file serving), POST /visual-search (CLIP query)
+- `scripts/index_visual.py` — batch CLIP indexer for photos
+- `frontend/src/components/VisualSearchResult.tsx` — photo grid + lightbox
+- `frontend/src/components/SourceList.tsx` — inline image thumbnails for image sources
+- `frontend/src/components/ChatMessage.tsx` — visual search message rendering
+- `frontend/src/components/StatusBar.tsx` — condensed mobile stats
+- `frontend/src/api.ts` — visualSearch(), fileUrl() helpers
+- `frontend/src/types.ts` — VisualResult, VisualSearchResponse types
+
+**What it does:**
+- User taps 📷 camera button → picks photo from library or takes new photo
+- Image POSTed to `/visual-search` → embedded with CLIP → nearest-neighbor search in `homeintel_visual`
+- Results displayed as 3-col photo grid with similarity % badges; tap to lightbox
+- GET /file serves NAS files securely (path must be under NAS_WATCH_PATH)
+- Image sources in RAG chat responses now show inline thumbnails
+
+**Qdrant collections:**
+| Collection | Model | Dim | Contents |
+|---|---|---|---|
+| `homeintel` | nomic-embed-text + BM25 | 768 | Text chunks (all modalities) |
+| `homeintel_colpali` | ColPali | 128 | PDF page patch embeddings |
+| `homeintel_visual` | CLIP | 768 | Photo visual embeddings (one per photo) |
+
+**VRAM budget with CLIP:**
+| Model | VRAM |
+|---|---|
+| qwen3:14b (Q4_K_M) | ~9–10 GB |
+| nomic-embed-text | ~270 MB |
+| bge-reranker-v2-m3 | ~1.1 GB |
+| CLIP large (lazy-loaded on first /visual-search) | ~500 MB |
+| **Headroom** | **~4.5 GB** |
+
+**Running the CLIP indexer:**
+```bash
+conda activate homeintel
+cd backend
+# Temporarily remove Z:/marcus_photoprism from WATCHER_EXCLUDE_PATHS in .env first
+python ../scripts/index_visual.py --path Z:/marcus_photoprism/originals
+# Restore WATCHER_EXCLUDE_PATHS after
+```
+
+**Similarity threshold:** 0.70 cosine similarity. Results below this are filtered out.
+Adjust `_SCORE_THRESHOLD` in `backend/vectorstore/clip.py` if results are too sparse or too noisy.
+
+**UI improvements also in this step:**
+- Mobile modality dropdown uses short labels (Docs/Imgs/Audio) so it doesn't get cut off
+- Stats bar shows condensed counts on mobile (📄429 🖼️4995 🎵0)
+- New chat ✏️ button in header clears message history (no persistence — in-memory only)
+- Inline image thumbnails in source list for image-modality RAG results
+- PWA safe-area-inset-top fix for iOS standalone mode (status bar overlap)
+
 ---
 
 ## Key Design Decisions & Rationale
@@ -383,6 +437,15 @@ is configured as SMB (Windows share) on TrueNAS.
 Survives PC reinstall/upgrade, accessible from multiple machines later. LAN
 latency to Qdrant REST API is low (sub-ms on gigabit). Qdrant storage (vectors +
 payload) on NAS SSD is preferred over PC to keep GPU memory free for inference.
+
+**Why CLIP for visual similarity instead of caption matching?**
+Caption matching (embed the caption text, search by text) finds semantically similar photos
+but misses visual similarity — a black Lab and a golden retriever are both "dogs" but look
+different. CLIP encodes raw image pixels into a shared embedding space, so photos of the
+same subject (same dog, same person, same place) cluster together regardless of the caption
+text. One point per photo (no chunking), stored in `homeintel_visual` separately from the
+caption chunks in `homeintel`. Threshold 0.70 cosine similarity — tune up for stricter
+matching, down if too few results.
 
 **Why exclude video files?**
 52 movies + 15 TV shows + large One Pace collection would take days to transcribe

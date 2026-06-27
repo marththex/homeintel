@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { sendChat } from "./api";
+import { sendChat, visualSearch } from "./api";
 import { ChatMessage } from "./components/ChatMessage";
 import { StatusBar } from "./components/StatusBar";
 import type { ChatMessage as Msg } from "./types";
 import "./App.css";
 
 const MODALITY_OPTIONS = [
-  { value: "", label: "All" },
-  { value: "document", label: "Documents" },
-  { value: "image", label: "Images" },
-  { value: "audio", label: "Audio" },
+  { value: "", label: "All", short: "All" },
+  { value: "document", label: "Documents", short: "Docs" },
+  { value: "image", label: "Images", short: "Imgs" },
+  { value: "audio", label: "Audio", short: "Audio" },
 ];
 
 let msgId = 0;
@@ -20,8 +20,16 @@ export default function App() {
   const [input, setInput] = useState("");
   const [modality, setModality] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 600);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -70,11 +78,62 @@ export default function App() {
     }
   }
 
+  async function onImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || loading) return;
+    e.target.value = "";
+
+    const queryImageUrl = URL.createObjectURL(file);
+    const userMsg: Msg = {
+      id: nextId(),
+      role: "user",
+      content: `📷 Visual search: ${file.name}`,
+      queryImageUrl,
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const data = await visualSearch(file);
+      const assistantMsg: Msg = {
+        id: nextId(),
+        role: "assistant",
+        content: data.results.length > 0
+          ? `Found ${data.results.length} visually similar photo${data.results.length !== 1 ? "s" : ""}.`
+          : "No visually similar photos found (similarity threshold: 70%).",
+        visualResults: data.results,
+        queryImageUrl,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: "assistant",
+          content: "Visual search failed. Is the CLIP index built? Run scripts/index_visual.py first.",
+          error: true,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
         <h1 className="logo">HomeIntel</h1>
-        <StatusBar />
+        <div className="header-right">
+          <StatusBar />
+          <button
+            className="new-chat-btn"
+            onClick={() => { setMessages([]); setInput(""); }}
+            title="New chat"
+          >
+            ✏️
+          </button>
+        </div>
       </header>
 
       <main className="chat-area">
@@ -106,7 +165,7 @@ export default function App() {
           title="Filter by modality"
         >
           {MODALITY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
+            <option key={o.value} value={o.value}>{isMobile ? o.short : o.label}</option>
           ))}
         </select>
         <textarea
@@ -124,6 +183,22 @@ export default function App() {
           autoCapitalize="sentences"
           spellCheck={false}
         />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={onImageUpload}
+        />
+        <button
+          className="camera-btn"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading}
+          title="Visual photo search"
+        >
+          📷
+        </button>
         <button className="send-btn" onClick={submit} disabled={loading || !input.trim()}>
           {loading ? "…" : "Send"}
         </button>
