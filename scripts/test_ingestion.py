@@ -60,7 +60,11 @@ def _find_compose_files(nas_root: Path) -> list[Path]:
             continue
         for compose_name in ("docker-compose.yml", "docker-compose.yaml"):
             candidate = Path(os.path.normpath(entry / compose_name))
-            if candidate.is_file():
+            try:
+                is_file = candidate.is_file()
+            except PermissionError:
+                is_file = False
+            if is_file:
                 found.append(candidate)
                 break  # one compose file per service folder is enough
 

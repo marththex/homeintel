@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from api.chat import router as chat_router
 from api.status import router as status_router
+from ingestion.watcher import start_watcher
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -44,7 +45,10 @@ async def lifespan(app: FastAPI):
                     logger.warning("Ollama returned HTTP %d at startup", resp.status_code)
         except Exception as exc:
             logger.warning("Ollama not reachable at startup: %s", exc)
+
+    watcher_thread = start_watcher()
     yield
+    # watcher is a daemon thread — exits with the process
 
 
 app = FastAPI(
