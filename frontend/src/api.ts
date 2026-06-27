@@ -1,6 +1,6 @@
 import type { HealthResponse, SourceDoc, StatsResponse } from "./types";
 
-const BASE = "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export async function sendChat(
   question: string,
