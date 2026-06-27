@@ -150,6 +150,14 @@ class Settings(BaseSettings):
         description="HuggingFace model ID for CLIP visual embeddings.",
     )
 
+    # ── Security ──────────────────────────────────────────────────────────────
+    redact_secrets: bool = Field(
+        default=True,
+        description="Redact detected passwords/API keys/tokens/private keys from "
+                    "ingested chunks, LLM context, and source excerpts (replaced "
+                    "with <REDACTED>). Strongly recommended.",
+    )
+
     # ── Dev helpers ───────────────────────────────────────────────────────────
     skip_llm_health_check: bool = Field(
         default=False,

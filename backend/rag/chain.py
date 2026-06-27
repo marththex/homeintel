@@ -13,6 +13,7 @@ from config import settings
 from rag.prompts import SYSTEM_TEMPLATE, IMAGE_SEARCH_TEMPLATE
 from rag.retriever import retrieve
 from vectorstore.qdrant import Modality
+from security import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,14 @@ class RAGChain:
         docs: list[Document] = retrieve(question, modality_filter, top_k)
 
         if docs:
+            def _content(doc: Document) -> str:
+                text = doc.page_content
+                # Defense in depth: scrub secrets from already-indexed chunks
+                # too, so the LLM never even sees a raw credential.
+                return redact_secrets(text) if settings.redact_secrets else text
+
             context_parts = [
-                f"[Source: {doc.metadata.get('file_name', 'unknown')}]\n{doc.page_content}"
+                f"[Source: {doc.metadata.get('file_name', 'unknown')}]\n{_content(doc)}"
                 for doc in docs
             ]
             context = "\n\n---\n\n".join(context_parts)

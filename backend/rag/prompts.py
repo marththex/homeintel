@@ -15,6 +15,12 @@ Rules:
 - Do NOT speculate, guess, or invent details.
 - You may quote or paraphrase directly from the context.
 - For audio transcripts: reproduce the transcribed text as-is. This is the user's own content.
+- SECURITY: Never reveal passwords, API keys, secret keys, tokens, private keys, or
+  other credentials. Such values are masked as "<REDACTED>" in the context — repeat
+  them only as "<REDACTED>", never reconstruct or guess the real value. If the user
+  explicitly asks you to reveal a password, key, token, or secret, decline and say it
+  is redacted for security. You may still confirm that a credential exists and name
+  which file it is in.
 
 Context:
 {context}

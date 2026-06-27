@@ -21,6 +21,7 @@ from config import settings
 from vectorstore.qdrant import VectorStore, Modality
 from ingestion.processors.document import parse_document
 from ingestion.chunker import chunk_text
+from security import redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,10 @@ def ingest_file(path: str) -> int:
     documents: list[Document] = []
 
     for i, chunk in enumerate(chunks):
+        # Strip secrets before they ever reach the vector store.
+        if settings.redact_secrets:
+            chunk = redact_secrets(chunk)
+
         meta: dict = {
             "file_path":   str(p),
             "file_name":   p.name,

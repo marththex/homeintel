@@ -437,6 +437,7 @@ homeintel/
 | `COLPALI_ENABLED` | `false` | Enable ColPali retrieval (run batch indexer first; OOMs with qwen3:14b — keep false) |
 | `COLPALI_MODEL` | `vidore/colpali-v1.2` | ColPali model |
 | `CLIP_MODEL` | `openai/clip-vit-large-patch14` | CLIP model for visual photo search |
+| `REDACT_SECRETS` | `true` | Redact passwords/keys/tokens at ingestion, context, and excerpts |
 | `DOCLING_VLM_ENABLED` | `false` | Docling VLM picture descriptions |
 
 ---
@@ -467,6 +468,13 @@ python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .j
 - No cloud API calls
 - All models run locally via Ollama or on-device (Whisper, reranker, ColPali, CLIP)
 - Source files are read-only (never modified)
+- **Secret redaction** (`REDACT_SECRETS=true`, default on): passwords, API keys,
+  tokens, and private keys are detected and replaced with `<REDACTED>` at three
+  layers — ingestion (kept out of Qdrant), LLM context (the model never sees the
+  raw value), and source excerpts (UI never shows it). The system prompt also
+  instructs the LLM to refuse to reveal credentials. See `backend/security/redact.py`.
+  Existing secrets indexed before this was enabled are still scrubbed at response
+  time; run `reindex.py` to also purge them from Qdrant storage.
 
 ---
 

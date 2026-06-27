@@ -428,6 +428,42 @@ Adjust `_SCORE_THRESHOLD` in `backend/vectorstore/clip.py` if results are too sp
 
 **Dependency added:** `react-markdown` (frontend). Inline SVG icons avoid an icon library.
 
+### ✅ Step 11 — Secret Redaction + Image-Query Prompt (COMPLETE)
+**Files created/modified:**
+- `backend/security/redact.py` — regex secret scanner (`redact_secrets`, `contains_secret`)
+- `backend/security/__init__.py`
+- `backend/rag/prompts.py` — added `IMAGE_SEARCH_TEMPLATE` + SECURITY rule in `SYSTEM_TEMPLATE`
+- `backend/rag/chain.py` — prompt routing (image vs Q&A) + context redaction
+- `backend/ingestion/pipeline.py` — redact chunks before upsert
+- `backend/api/chat.py` — redact source excerpts
+- `backend/config.py` — `redact_secrets` flag (default true)
+
+**Image-query prompt routing:** `chain.run()` picks `IMAGE_SEARCH_TEMPLATE` when
+`modality_filter == "image"` OR every retrieved doc is image-modality. This stops the
+strict Q&A prompt from refusing ("I don't have information…") on photo-search phrases —
+image search is a "show me matches" task, not factual Q&A. Detection is deterministic
+from retrieval metadata, not an LLM classifier.
+
+**Secret redaction (defense in depth, `REDACT_SECRETS=true`):** detected secrets become
+`<REDACTED>` at three layers:
+1. **Ingestion** (`pipeline.py`) — scrubbed before upsert, so new files never store
+   secrets in Qdrant.
+2. **LLM context** (`chain.py`) — scrubbed before the prompt, so the model never sees a
+   raw credential even if one is already stored from an earlier index.
+3. **Source excerpts** (`api/chat.py`) — scrubbed before returning to the UI.
+Plus a prompt rule telling the LLM to refuse to reveal credentials.
+
+Detects: PEM private-key blocks; token prefixes (sk-, ghp_/gho_/ghs_, xox*, AKIA, AIza,
+JWT); secret-named key/value pairs (env `POSTGRES_PASSWORD=…`, YAML/JSON `"password":"…"`,
+incl. prefixed names + `totp`/`otp_secret`/`recovery_code`/`seed_phrase`/`mnemonic`);
+connection-string creds (`scheme://user:pass@host`). Errs toward over-redaction.
+
+**Existing index caveat:** secrets indexed *before* this was added are still scrubbed at
+response time (layers 2+3), but remain raw in Qdrant storage. Run `reindex.py` to purge
+them from storage (layer 1). Note `2fact/` (Bitwarden export) and config/compose files
+were the main sources — redaction now covers them, but excluding `Z:/2fact` entirely is
+the belt-and-suspenders option.
+
 ---
 
 ## Key Design Decisions & Rationale

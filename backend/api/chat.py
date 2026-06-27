@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 from config import settings
 from models.chat import ChatRequest, ChatResponse, SourceDoc
 from rag.chain import get_chain
+from security import redact_secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,12 +29,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         logger.exception("RAG chain failed for question: %r", request.question)
         raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}") from exc
 
+    def _excerpt(text: str) -> str:
+        snippet = text[:200]
+        return redact_secrets(snippet) if settings.redact_secrets else snippet
+
     sources = [
         SourceDoc(
             file_name=doc.metadata.get("file_name", ""),
             file_path=doc.metadata.get("file_path", ""),
             modality=doc.metadata.get("modality", ""),
-            excerpt=doc.page_content[:200],
+            excerpt=_excerpt(doc.page_content),
         )
         for doc in result["docs"]
     ]
