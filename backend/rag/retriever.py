@@ -82,23 +82,45 @@ def retrieve(
             logger.warning("Unknown modality_filter %r — ignoring", modality_filter)
 
     final_k = _resolve_top_k(modality, top_k)
-    pre_k = final_k * 3
+    # Image captions can span >1 chunk, so a single photo may appear multiple
+    # times. Fetch extra candidates (and dedupe below) so "top N" still yields
+    # N distinct photos.
+    pre_k = final_k * 4 if modality == Modality.IMAGE else final_k * 3
     docs = _get_vs().query(question, top_k=pre_k, modality=modality)
 
     # Optional ColPali visual retrieval
     if settings.colpali_enabled and not modality_filter:
         docs = _merge_colpali(question, docs, pre_k)
 
+    # Rerank the full candidate set (cost is the same — it scores all pairs
+    # either way) so dedup downstream has enough material to fill final_k.
     if settings.reranker_enabled and len(docs) > 1:
-        docs = _rerank(question, docs, final_k)
-    else:
-        docs = docs[:final_k]
+        docs = _rerank(question, docs, len(docs))
+
+    # One result per photo for image queries — collapse duplicate file_paths.
+    if modality == Modality.IMAGE:
+        docs = _dedupe_by_path(docs)
+
+    docs = docs[:final_k]
 
     logger.debug(
         "Retrieved %d chunks for query: %r (top_k=%d reranker=%s colpali=%s)",
         len(docs), question, final_k, settings.reranker_enabled, settings.colpali_enabled,
     )
     return docs
+
+
+def _dedupe_by_path(docs: list[Document]) -> list[Document]:
+    """Keep only the first (highest-ranked) chunk per file_path, preserving order."""
+    seen: set = set()
+    out: list[Document] = []
+    for d in docs:
+        path = d.metadata.get("file_path")
+        if path in seen:
+            continue
+        seen.add(path)
+        out.append(d)
+    return out
 
 
 def _merge_colpali(
