@@ -4,12 +4,17 @@ const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export async function sendChat(
   question: string,
-  modality_filter?: string
+  modality_filter?: string,
+  top_k?: number
 ): Promise<{ answer: string; sources: SourceDoc[]; chunks_used: number; model: string }> {
   const res = await fetch(`${BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, modality_filter: modality_filter || null }),
+    body: JSON.stringify({
+      question,
+      modality_filter: modality_filter || null,
+      top_k: top_k ?? null,
+    }),
   });
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();

@@ -39,7 +39,26 @@ def _get_reranker():
     return _reranker
 
 
-def retrieve(question: str, modality_filter: Optional[str] = None) -> list[Document]:
+# Image queries return more results so the user can browse photos in the
+# carousel. Document/audio Q&A stays at RETRIEVAL_TOP_K to keep the LLM
+# context (and latency) small.
+_IMAGE_DEFAULT_TOP_K = 20
+
+
+def _resolve_top_k(modality: Optional[Modality], override: Optional[int]) -> int:
+    """Adaptive result count: explicit override wins, else 20 for images, else default."""
+    if override is not None:
+        return max(1, min(override, 20))
+    if modality == Modality.IMAGE:
+        return _IMAGE_DEFAULT_TOP_K
+    return settings.retrieval_top_k
+
+
+def retrieve(
+    question: str,
+    modality_filter: Optional[str] = None,
+    top_k: Optional[int] = None,
+) -> list[Document]:
     """
     Retrieve the top-k most relevant chunks for a question.
 
@@ -52,6 +71,8 @@ def retrieve(question: str, modality_filter: Optional[str] = None) -> list[Docum
         question:        Natural language query.
         modality_filter: Optional modality string ("document", "image", "audio").
                          Invalid values are silently ignored.
+        top_k:           Optional override for result count (1-20). When None,
+                         uses 20 for image queries and RETRIEVAL_TOP_K otherwise.
     """
     modality: Optional[Modality] = None
     if modality_filter:
@@ -60,7 +81,8 @@ def retrieve(question: str, modality_filter: Optional[str] = None) -> list[Docum
         except ValueError:
             logger.warning("Unknown modality_filter %r — ignoring", modality_filter)
 
-    pre_k = settings.retrieval_top_k * 3
+    final_k = _resolve_top_k(modality, top_k)
+    pre_k = final_k * 3
     docs = _get_vs().query(question, top_k=pre_k, modality=modality)
 
     # Optional ColPali visual retrieval
@@ -68,13 +90,13 @@ def retrieve(question: str, modality_filter: Optional[str] = None) -> list[Docum
         docs = _merge_colpali(question, docs, pre_k)
 
     if settings.reranker_enabled and len(docs) > 1:
-        docs = _rerank(question, docs, settings.retrieval_top_k)
+        docs = _rerank(question, docs, final_k)
     else:
-        docs = docs[:settings.retrieval_top_k]
+        docs = docs[:final_k]
 
     logger.debug(
-        "Retrieved %d chunks for query: %r (reranker=%s colpali=%s)",
-        len(docs), question, settings.reranker_enabled, settings.colpali_enabled,
+        "Retrieved %d chunks for query: %r (top_k=%d reranker=%s colpali=%s)",
+        len(docs), question, final_k, settings.reranker_enabled, settings.colpali_enabled,
     )
     return docs
 

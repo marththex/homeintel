@@ -345,24 +345,20 @@ verified working (SMB write, embeddings, upsert/query/delete). It has been
 - Audio: faster-whisper transcription (GPU, lazy singleton, `WHISPER_MODEL_SIZE`) → text chunks → embeddings
 - Both integrated into `pipeline.py` routing — watcher auto-ingests images/audio on file events
 
-### ✅ Step 9 — CLIP Visual Similarity + UI Improvements (COMPLETE)
+### ✅ Step 9 — CLIP Visual Similarity (COMPLETE)
 **Files created/modified:**
 - `backend/vectorstore/clip.py` — CLIPVisualStore class (openai/clip-vit-large-patch14, 768-dim)
 - `backend/api/files.py` — GET /file (NAS file serving), POST /visual-search (CLIP query)
 - `scripts/index_visual.py` — batch CLIP indexer for photos
-- `frontend/src/components/VisualSearchResult.tsx` — photo grid + lightbox
-- `frontend/src/components/SourceList.tsx` — inline image thumbnails for image sources
-- `frontend/src/components/ChatMessage.tsx` — visual search message rendering
-- `frontend/src/components/StatusBar.tsx` — condensed mobile stats
 - `frontend/src/api.ts` — visualSearch(), fileUrl() helpers
 - `frontend/src/types.ts` — VisualResult, VisualSearchResponse types
 
 **What it does:**
-- User taps 📷 camera button → picks photo from library or takes new photo
-- Image POSTed to `/visual-search` → embedded with CLIP → nearest-neighbor search in `homeintel_visual`
-- Results displayed as 3-col photo grid with similarity % badges; tap to lightbox
-- GET /file serves NAS files securely (path must be under NAS_WATCH_PATH)
-- Image sources in RAG chat responses now show inline thumbnails
+- User uploads/takes a photo → POSTed to `/visual-search` → embedded with CLIP →
+  nearest-neighbor search in `homeintel_visual`
+- Results shown in a swipeable carousel with similarity % (see Step 10 UI)
+- GET /file serves NAS files securely (path must resolve under NAS_WATCH_PATH — blocks traversal)
+- Image sources in RAG chat responses also render as a carousel
 
 **Qdrant collections:**
 | Collection | Model | Dim | Contents |
@@ -392,12 +388,45 @@ python ../scripts/index_visual.py --path Z:/marcus_photoprism/originals
 **Similarity threshold:** 0.70 cosine similarity. Results below this are filtered out.
 Adjust `_SCORE_THRESHOLD` in `backend/vectorstore/clip.py` if results are too sparse or too noisy.
 
-**UI improvements also in this step:**
-- Mobile modality dropdown uses short labels (Docs/Imgs/Audio) so it doesn't get cut off
-- Stats bar shows condensed counts on mobile (📄429 🖼️4995 🎵0)
-- New chat ✏️ button in header clears message history (no persistence — in-memory only)
-- Inline image thumbnails in source list for image-modality RAG results
-- PWA safe-area-inset-top fix for iOS standalone mode (status bar overlap)
+### ✅ Step 10 — Mobile-First UI Redesign (COMPLETE)
+**Files created:**
+- `frontend/src/components/Header.tsx` — slim header (title + health dot + new-chat)
+- `frontend/src/components/BottomSheet.tsx` — reusable iOS-style bottom sheet
+- `frontend/src/components/PhotoCarousel.tsx` — swipeable photo carousel (scroll-snap)
+- `frontend/src/components/icons.tsx` — inline SVG icons (no icon-lib dependency)
+- `frontend/src/hooks/useSystemStatus.ts` — health + stats polling hook
+
+**Files removed (superseded):**
+- `frontend/src/components/StatusBar.tsx` → replaced by header health dot + status sheet
+- `frontend/src/components/VisualSearchResult.tsx` → replaced by PhotoCarousel
+
+**What changed (inspired by ChatGPT/Claude mobile):**
+- **Slim header**: just the title, a single health dot (green/red — tap opens a status
+  bottom sheet with Ollama/Qdrant state + chunk counts), and a new-chat compose button.
+  All the clutter (2 dots + 3 counts) moved off the header.
+- **Pill composer**: `[ + ]  [ text input ]  [ ↑ send ]` — one rounded pill. The `+`
+  opens a bottom sheet (action menu) instead of cramming buttons into the bar.
+- **`+` action sheet** consolidates all secondary actions: Take a photo / Choose from
+  library (visual search), modality filter chips (All/Documents/Images/Audio), and a
+  "Results to show" stepper (Auto/3/6/10/15/20).
+- **Active-filter chips** above the composer show the current filter / top-K, each
+  tappable to clear — gives the user feedback on non-default state.
+- **Markdown rendering** (`react-markdown`): assistant answers now render `**bold**`,
+  numbered lists, code, etc. instead of showing literal `**[IMG_0967.JPG]**`.
+- **Swipeable carousel** replaces the thumbnail grid + lightbox: one large photo at a
+  time, swipe left/right (native CSS `scroll-snap`, no JS touch handling), dot indicators
+  (≤10) or a `n / total` counter, filename + match% overlay, "Show 10 more" pagination.
+- **44px touch targets** throughout; safe-area insets on header (top) and composer (bottom).
+
+**Adaptive top-K (`backend/rag/retriever.py`):**
+- Image queries default to **top-20** (browse more photos); docs/audio stay at
+  `RETRIEVAL_TOP_K` (6) to keep LLM context + latency small.
+- The `+` sheet's "Results to show" sends an explicit `top_k` (1–20) on the `/chat`
+  request that overrides the adaptive default. Blank = Auto.
+- New optional `top_k` field on `ChatRequest` → threaded through `chain.run()` →
+  `retrieve()` → `_resolve_top_k()`.
+
+**Dependency added:** `react-markdown` (frontend). Inline SVG icons avoid an icon library.
 
 ---
 

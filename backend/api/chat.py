@@ -23,7 +23,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     """
     try:
         chain = get_chain()
-        result = chain.run(request.question, request.modality_filter)
+        result = chain.run(request.question, request.modality_filter, request.top_k)
     except Exception as exc:
         logger.exception("RAG chain failed for question: %r", request.question)
         raise HTTPException(status_code=503, detail=f"LLM unavailable: {exc}") from exc

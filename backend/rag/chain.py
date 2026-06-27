@@ -35,6 +35,7 @@ class RAGChain:
         self,
         question: str,
         modality_filter: Optional[str] = None,
+        top_k: Optional[int] = None,
     ) -> dict:
         """
         Execute the full RAG pipeline.
@@ -45,7 +46,7 @@ class RAGChain:
                 "docs":   list[Document],
             }
         """
-        docs: list[Document] = retrieve(question, modality_filter)
+        docs: list[Document] = retrieve(question, modality_filter, top_k)
 
         if docs:
             context_parts = [

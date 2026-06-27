@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { sendChat, visualSearch } from "./api";
 import { ChatMessage } from "./components/ChatMessage";
-import { StatusBar } from "./components/StatusBar";
+import { Header } from "./components/Header";
+import { BottomSheet } from "./components/BottomSheet";
+import { PlusIcon, SendIcon, CameraIcon, ImageIcon, CloseIcon } from "./components/icons";
+import { useSystemStatus } from "./hooks/useSystemStatus";
 import type { ChatMessage as Msg } from "./types";
 import "./App.css";
 
 const MODALITY_OPTIONS = [
-  { value: "", label: "All", short: "All" },
-  { value: "document", label: "Documents", short: "Docs" },
-  { value: "image", label: "Images", short: "Imgs" },
-  { value: "audio", label: "Audio", short: "Audio" },
+  { value: "", label: "All" },
+  { value: "document", label: "Documents" },
+  { value: "image", label: "Images" },
+  { value: "audio", label: "Audio" },
 ];
 
 let msgId = 0;
@@ -19,21 +22,34 @@ export default function App() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [modality, setModality] = useState("");
+  const [topK, setTopK] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
+  const [actionSheet, setActionSheet] = useState(false);
+  const [statusSheet, setStatusSheet] = useState(false);
 
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 600);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+  const { health, stats } = useSystemStatus();
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }, [input]);
+
+  function newChat() {
+    setMessages([]);
+    setInput("");
+  }
 
   async function submit() {
     const q = input.trim();
@@ -45,7 +61,7 @@ export default function App() {
     setLoading(true);
 
     try {
-      const data = await sendChat(q, modality || undefined);
+      const data = await sendChat(q, modality || undefined, topK ?? undefined);
       const assistantMsg: Msg = {
         id: nextId(),
         role: "assistant",
@@ -55,7 +71,7 @@ export default function App() {
         model: data.model,
       };
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch (err) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -80,14 +96,15 @@ export default function App() {
 
   async function onImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || loading) return;
     e.target.value = "";
+    if (!file || loading) return;
+    setActionSheet(false);
 
     const queryImageUrl = URL.createObjectURL(file);
     const userMsg: Msg = {
       id: nextId(),
       role: "user",
-      content: `📷 Visual search: ${file.name}`,
+      content: "Visual search",
       queryImageUrl,
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -98,9 +115,10 @@ export default function App() {
       const assistantMsg: Msg = {
         id: nextId(),
         role: "assistant",
-        content: data.results.length > 0
-          ? `Found ${data.results.length} visually similar photo${data.results.length !== 1 ? "s" : ""}.`
-          : "No visually similar photos found (similarity threshold: 70%).",
+        content:
+          data.results.length > 0
+            ? `Found ${data.results.length} visually similar photo${data.results.length !== 1 ? "s" : ""}.`
+            : "No visually similar photos found (similarity threshold: 70%).",
         visualResults: data.results,
         queryImageUrl,
       };
@@ -120,27 +138,22 @@ export default function App() {
     }
   }
 
+  const modalityLabel = MODALITY_OPTIONS.find((o) => o.value === modality)?.label ?? "All";
+
   return (
     <div className="app">
-      <header className="header">
-        <h1 className="logo">HomeIntel</h1>
-        <div className="header-right">
-          <StatusBar />
-          <button
-            className="new-chat-btn"
-            onClick={() => { setMessages([]); setInput(""); }}
-            title="New chat"
-          >
-            ✏️
-          </button>
-        </div>
-      </header>
+      <Header
+        health={health}
+        onStatusClick={() => setStatusSheet(true)}
+        onNewChat={newChat}
+      />
 
       <main className="chat-area">
         {messages.length === 0 && (
           <div className="empty-state">
             <p>Ask anything about your NAS files.</p>
             <p className="empty-hint">Try "What does my resume say about Python experience?"</p>
+            <p className="empty-hint">Tap + to search by photo.</p>
           </div>
         )}
         {messages.map((m) => (
@@ -156,53 +169,146 @@ export default function App() {
         <div ref={bottomRef} />
       </main>
 
-      <footer className="input-area">
-        <select
-          className="modality-select"
-          value={modality}
-          onChange={(e) => setModality(e.target.value)}
-          disabled={loading}
-          title="Filter by modality"
-        >
-          {MODALITY_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{isMobile ? o.short : o.label}</option>
-          ))}
-        </select>
-        <textarea
-          ref={inputRef}
-          className="chat-input"
-          rows={1}
-          placeholder="Ask about your files…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          onFocus={() => setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 300)}
-          disabled={loading}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="sentences"
-          spellCheck={false}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={{ display: "none" }}
-          onChange={onImageUpload}
-        />
-        <button
-          className="camera-btn"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={loading}
-          title="Visual photo search"
-        >
-          📷
-        </button>
-        <button className="send-btn" onClick={submit} disabled={loading || !input.trim()}>
-          {loading ? "…" : "Send"}
-        </button>
+      <footer className="composer">
+        {(modality || topK !== null) && (
+          <div className="chip-row">
+            {modality && (
+              <button className="chip" onClick={() => setModality("")}>
+                {modalityLabel} <CloseIcon size={13} />
+              </button>
+            )}
+            {topK !== null && (
+              <button className="chip" onClick={() => setTopK(null)}>
+                Top {topK} <CloseIcon size={13} />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="composer-pill">
+          <button
+            className="pill-btn plus-btn"
+            onClick={() => setActionSheet(true)}
+            disabled={loading}
+            aria-label="Attach or filter"
+          >
+            <PlusIcon />
+          </button>
+          <textarea
+            ref={inputRef}
+            className="composer-input"
+            rows={1}
+            placeholder="Ask about your files…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            onFocus={() => setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 300)}
+            disabled={loading}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="sentences"
+            spellCheck={false}
+          />
+          <button
+            className="pill-btn send-btn"
+            onClick={submit}
+            disabled={loading || !input.trim()}
+            aria-label="Send"
+          >
+            <SendIcon />
+          </button>
+        </div>
       </footer>
+
+      {/* Hidden file inputs for visual search */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={onImageUpload}
+      />
+      <input
+        ref={libraryInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={onImageUpload}
+      />
+
+      {/* "+" action sheet */}
+      <BottomSheet open={actionSheet} onClose={() => setActionSheet(false)} title="Search options">
+        <div className="sheet-section-label">Visual search</div>
+        <button className="sheet-action" onClick={() => cameraInputRef.current?.click()}>
+          <CameraIcon /> <span>Take a photo</span>
+        </button>
+        <button className="sheet-action" onClick={() => libraryInputRef.current?.click()}>
+          <ImageIcon /> <span>Choose from library</span>
+        </button>
+
+        <div className="sheet-section-label">Filter results</div>
+        <div className="sheet-chips">
+          {MODALITY_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              className={`sheet-chip ${modality === o.value ? "active" : ""}`}
+              onClick={() => setModality(o.value)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="sheet-section-label">Results to show</div>
+        <div className="sheet-chips">
+          <button
+            className={`sheet-chip ${topK === null ? "active" : ""}`}
+            onClick={() => setTopK(null)}
+          >
+            Auto
+          </button>
+          {[3, 6, 10, 15, 20].map((n) => (
+            <button
+              key={n}
+              className={`sheet-chip ${topK === n ? "active" : ""}`}
+              onClick={() => setTopK(n)}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
+
+      {/* Status sheet */}
+      <BottomSheet open={statusSheet} onClose={() => setStatusSheet(false)} title="System status">
+        <div className="status-rows">
+          <div className="status-row">
+            <span>Ollama (LLM)</span>
+            <span className={`status-badge ${health?.ollama ? "ok" : "bad"}`}>
+              {health?.ollama ? "Connected" : "Offline"}
+            </span>
+          </div>
+          <div className="status-row">
+            <span>Qdrant (Vector DB)</span>
+            <span className={`status-badge ${health?.qdrant ? "ok" : "bad"}`}>
+              {health?.qdrant ? "Connected" : "Offline"}
+            </span>
+          </div>
+        </div>
+
+        {stats && (
+          <>
+            <div className="sheet-section-label">Indexed content</div>
+            <div className="status-rows">
+              <div className="status-row"><span>📄 Documents</span><span>{stats.document.toLocaleString()}</span></div>
+              <div className="status-row"><span>🖼️ Images</span><span>{stats.image.toLocaleString()}</span></div>
+              <div className="status-row"><span>🎵 Audio</span><span>{stats.audio.toLocaleString()}</span></div>
+              <div className="status-row total"><span>Total chunks</span><span>{stats.total.toLocaleString()}</span></div>
+            </div>
+          </>
+        )}
+      </BottomSheet>
     </div>
   );
 }

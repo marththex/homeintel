@@ -36,13 +36,15 @@ Ingestion Pipeline
   ├── PDFs/Docs/Config → Docling → chunks → nomic-embed-text + BM25
   ├── Images           → Ollama vision caption → chunks → embeddings
   ├── Audio            → Faster-Whisper transcript → chunks → embeddings
-  └── PDFs (visual)    → ColPali page embeddings (batch, GPU)
+  ├── PDFs (visual)    → ColPali page embeddings (batch, GPU)
+  └── Photos (visual)  → CLIP image embeddings (batch, GPU)
         ↓
-Qdrant (Docker on VM/NAS) — hybrid dense+sparse+ColPali search
+Qdrant (Docker on VM/NAS) — hybrid dense+sparse + ColPali + CLIP collections
         ↓
-FastAPI backend — RAG chain + bge-reranker-v2-m3
+FastAPI backend — RAG chain + bge-reranker-v2-m3 + /visual-search + /file
         ↓
-React chat interface (Vite, port 5173)
+React chat interface (Vite, port 5173) — markdown answers, swipeable photo carousel,
+mobile-first composer (camera/library upload, filter + result-count sheet)
 ```
 
 ---
@@ -58,7 +60,8 @@ React chat interface (Vite, port 5173)
 | Vector Store | [Qdrant](https://qdrant.tech) (Docker, hybrid dense+sparse+ColPali) |
 | RAG Framework | [LangChain](https://langchain.com) |
 | Document Parsing | [Docling](https://ds4sd.github.io/docling/) (PDF/DOCX → structured markdown) |
-| Visual Retrieval | [ColPali](https://github.com/illuin-tech/colpali) (vidore/colpali-v1.2, batch GPU) |
+| Visual Retrieval (PDF) | [ColPali](https://github.com/illuin-tech/colpali) (vidore/colpali-v1.2, batch GPU) |
+| Visual Similarity (photos) | [CLIP](https://huggingface.co/openai/clip-vit-large-patch14) (query-by-photo, `homeintel_visual`) |
 | Image Captioning | Ollama vision model (opt-in via `OLLAMA_VISION_MODEL`) |
 | Speech-to-Text | [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) (GPU) |
 | Backend | [FastAPI](https://fastapi.tiangolo.com) |
@@ -84,10 +87,14 @@ React chat interface (Vite, port 5173)
 | qwen3:14b (Q4_K_M) | ~9–10 GB |
 | nomic-embed-text | ~270 MB |
 | bge-reranker-v2-m3 | ~1.1 GB |
-| **Headroom** | **~5 GB** |
+| CLIP large (lazy, first `/visual-search`) | ~500 MB |
+| **Headroom** | **~4.5 GB** |
 
-ColPali (~8 GB) is a separate batch process — not loaded during live inference.
+ColPali (~8 GB) is a separate batch process — not loaded during live inference; keep
+`COLPALI_ENABLED=false` for normal use (it OOMs alongside qwen3:14b at query time).
 Vision captioning (`qwen2.5vl:7b`, ~5 GB) runs only during file ingestion.
+CLIP photo embeddings are indexed in batch by `scripts/index_visual.py`; the model
+loads lazily (~500 MB) on the first `/visual-search` and stays resident for queries.
 
 ---
 
@@ -268,6 +275,49 @@ Then enable retrieval in `.env`:
 COLPALI_ENABLED=true
 ```
 
+> **Note:** ColPali OOMs alongside qwen3:14b at query time on a 16 GB GPU. Keep
+> `COLPALI_ENABLED=false` for normal use — the indexed page vectors stay in Qdrant
+> and cost no VRAM; you only need the model loaded to add new PDFs.
+
+---
+
+## CLIP Visual Photo Search (optional)
+
+Query your photo library **by photo** — take or upload a picture of your dog and find
+every other photo of that dog. CLIP encodes raw image pixels into a shared embedding
+space, so visually similar photos cluster together (independent of any text caption).
+
+No extra deps needed (`transformers` + `torch` are already installed). Build the index:
+
+```bash
+conda activate homeintel
+cd backend
+# Temporarily remove Z:/marcus_photoprism from WATCHER_EXCLUDE_PATHS in .env first
+python ../scripts/index_visual.py --path Z:/marcus_photoprism/originals
+python ../scripts/index_visual.py --clear --path Z:/photos   # wipe + reindex
+# Restore WATCHER_EXCLUDE_PATHS after
+```
+
+Photos are stored in the `homeintel_visual` Qdrant collection (one vector per photo,
+~500 MB VRAM, ~20–40 min for ~3k photos on RTX 5080). Once indexed, tap **+ → Take a
+photo / Choose from library** in the web UI. Matches above 0.70 cosine similarity are
+returned in a swipeable carousel with match-percentage labels.
+
+---
+
+## Web UI Features
+
+- **Markdown answers** — bold, lists, and code render properly
+- **Swipeable photo carousel** — image results show full-size, swipe left/right, "Show
+  more" pagination; tap **+** to search by photo (camera or library)
+- **Mobile-first composer** — single rounded input pill (`+` · text · send); the `+`
+  sheet holds visual search, modality filter (All/Documents/Images/Audio), and a
+  "Results to show" stepper (Auto/3/6/10/15/20)
+- **Adaptive results** — image queries default to 20 results, doc/audio to 6; override
+  per-query from the `+` sheet
+- **Status sheet** — tap the health dot in the header for Ollama/Qdrant status + chunk counts
+- **iOS PWA-ready** — add to home screen; safe-area insets handled
+
 ---
 
 ## Project Structure
@@ -301,31 +351,43 @@ homeintel/
 │   │       └── colpali.py          # ColPali page embeddings (batch)
 │   │
 │   ├── rag/
-│   │   ├── retriever.py            # hybrid + ColPali merge + reranker
+│   │   ├── retriever.py            # hybrid + ColPali merge + reranker + adaptive top-k
 │   │   ├── chain.py                # LangChain RAG chain
 │   │   └── prompts.py              # system prompt template
 │   │
 │   ├── vectorstore/
-│   │   └── qdrant.py               # Qdrant wrapper (dense+sparse+ColPali)
+│   │   ├── qdrant.py               # Qdrant wrapper (dense+sparse+ColPali)
+│   │   └── clip.py                 # CLIP visual store (homeintel_visual)
+│   │
+│   ├── api/
+│   │   ├── chat.py                 # POST /chat
+│   │   ├── status.py               # GET /health, /stats
+│   │   └── files.py                # GET /file, POST /visual-search
 │   │
 │   └── models/
 │       └── chat.py                 # ChatRequest / ChatResponse / SourceDoc
 │
 ├── frontend/                       # React + Vite
 │   └── src/
-│       ├── App.tsx                 # chat layout, modality filter
-│       ├── api.ts                  # fetch wrappers
+│       ├── App.tsx                 # layout, composer, action + status sheets
+│       ├── api.ts                  # fetch wrappers (chat, visual-search, file)
 │       ├── types.ts
+│       ├── hooks/
+│       │   └── useSystemStatus.ts  # health + stats polling
 │       └── components/
-│           ├── ChatMessage.tsx
-│           ├── SourceList.tsx
-│           └── StatusBar.tsx       # health dots + chunk counts
+│           ├── Header.tsx          # slim header + health dot
+│           ├── ChatMessage.tsx     # markdown answers
+│           ├── SourceList.tsx      # non-image sources + image carousel
+│           ├── PhotoCarousel.tsx   # swipeable photo results
+│           ├── BottomSheet.tsx     # reusable iOS-style sheet
+│           └── icons.tsx           # inline SVG icons
 │
 └── scripts/
     ├── test_vectorstore.py         # Qdrant smoke test
     ├── test_ingestion.py           # ingest + query smoke test
     ├── verify_api.py               # 8-check API integration test
-    └── run_colpali.py              # batch ColPali PDF indexer
+    ├── run_colpali.py              # batch ColPali PDF indexer
+    └── index_visual.py             # batch CLIP photo indexer
 ```
 
 ---
@@ -348,11 +410,12 @@ homeintel/
 | `WHISPER_MODEL_SIZE` | `base` | faster-whisper model size |
 | `CHUNK_SIZE` | `512` | Tokens per chunk |
 | `CHUNK_OVERLAP` | `64` | Token overlap between chunks |
-| `RETRIEVAL_TOP_K` | `6` | Chunks returned per query |
+| `RETRIEVAL_TOP_K` | `6` | Chunks returned per query (image queries auto-bump to 20; UI can override) |
 | `RERANKER_ENABLED` | `true` | Cross-encoder reranking |
 | `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Reranker model |
-| `COLPALI_ENABLED` | `false` | Enable ColPali retrieval (run batch indexer first) |
+| `COLPALI_ENABLED` | `false` | Enable ColPali retrieval (run batch indexer first; OOMs with qwen3:14b — keep false) |
 | `COLPALI_MODEL` | `vidore/colpali-v1.2` | ColPali model |
+| `CLIP_MODEL` | `openai/clip-vit-large-patch14` | CLIP model for visual photo search |
 | `DOCLING_VLM_ENABLED` | `false` | Docling VLM picture descriptions |
 
 ---
@@ -366,6 +429,7 @@ homeintel/
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | Ollama vision caption → chunks → embeddings (requires `OLLAMA_VISION_MODEL`) |
 | `.mp3`, `.wav`, `.m4a`, `.flac`, `.ogg` | Faster-Whisper transcript → chunks → embeddings |
 | PDFs (visual, batch) | ColPali page multi-vectors → `homeintel_colpali` collection |
+| Photos (visual, batch) | CLIP image embeddings → `homeintel_visual` collection (query-by-photo) |
 
 **Excluded by default:** media files (movies/TV), ROM files, raw footage, Qdrant storage, Docker overlay2, Music library (Whisper too slow), web project node_modules, service data dirs (Vaultwarden, MariaDB, Nextcloud app code).
 
@@ -380,7 +444,7 @@ python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .j
 
 - No data ever leaves your network
 - No cloud API calls
-- All models run locally via Ollama or on-device (Whisper, reranker, ColPali)
+- All models run locally via Ollama or on-device (Whisper, reranker, ColPali, CLIP)
 - Source files are read-only (never modified)
 
 ---
@@ -395,6 +459,8 @@ python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .j
 - [x] Step 6 — React chat interface (dark theme, source attribution, modality filter)
 - [x] Step 7 — ColPali visual retrieval (batch PDF indexer, MaxSim Qdrant search)
 - [x] Step 8 — Image & audio processors (vision caption + Whisper transcription)
+- [x] Step 9 — CLIP visual photo search (query-by-photo, `homeintel_visual`)
+- [x] Step 10 — Mobile-first UI redesign (markdown answers, swipeable carousel, pill composer + action sheet)
 - [x] Full reindex script (bulk ingest existing NAS contents)
 - [x] Windows auto-start (Task Scheduler — backend + frontend start at login)
 - [ ] CI/CD pipeline

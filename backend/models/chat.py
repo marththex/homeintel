@@ -12,6 +12,13 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional modality to restrict retrieval: 'document', 'image', or 'audio'.",
     )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=20,
+        description="Optional override for number of results. Blank uses the adaptive "
+                    "default (20 for image queries, RETRIEVAL_TOP_K otherwise).",
+    )
 
 
 class SourceDoc(BaseModel):
