@@ -356,7 +356,7 @@ class VectorStore:
         return paths
 
     def stats(self) -> dict[str, Any]:
-        """Per-modality chunk breakdown."""
+        """Per-modality chunk breakdown + CLIP visual photo count."""
         total = self.count()
         counts: dict[str, int] = {}
         for modality in Modality:
@@ -368,8 +368,17 @@ class VectorStore:
             )
             counts[modality.value] = result.count
 
+        # CLIP visual collection (homeintel_visual) — one vector per photo.
+        # Counted via the existing client, no CLIP model load (stats stays cheap).
+        visual = 0
+        try:
+            visual = self._client.count(f"{settings.qdrant_collection_name}_visual").count
+        except Exception:
+            visual = 0
+
         return {
             **counts,           # "document": N, "image": N, "audio": N
+            "visual": visual,   # CLIP photo vectors
             "total": total,
         }
 

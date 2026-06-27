@@ -22,6 +22,7 @@ export interface StatsResponse {
   document: number;
   image: number;
   audio: number;
+  visual: number;
   total: number;
 }
 

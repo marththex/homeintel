@@ -157,6 +157,13 @@ class Settings(BaseSettings):
         default="openai/clip-vit-large-patch14",
         description="HuggingFace model ID for CLIP visual embeddings.",
     )
+    clip_auto_index: bool = Field(
+        default=False,
+        description="When true, the watcher also CLIP-indexes new/changed images "
+                    "into homeintel_visual (live visual search). Run the bulk "
+                    "index_visual.py backfill first, then enable. Loads the CLIP "
+                    "model (~500 MB-2 GB) in the backend process.",
+    )
 
     # ── Security ──────────────────────────────────────────────────────────────
     redact_secrets: bool = Field(

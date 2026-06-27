@@ -464,6 +464,32 @@ them from storage (layer 1). Note `2fact/` (Bitwarden export) and config/compose
 were the main sources — redaction now covers them, but excluding `Z:/2fact` entirely is
 the belt-and-suspenders option.
 
+### ✅ Step 12 — Live CLIP Auto-Indexing + Status Split (COMPLETE)
+**Files modified:**
+- `backend/vectorstore/clip.py` — module-level `get_clip_store()` shared singleton
+- `backend/vectorstore/qdrant.py` — `stats()` now also returns `visual` (homeintel_visual count)
+- `backend/api/files.py` — uses `get_clip_store()` (one CLIP instance for search + watcher)
+- `backend/ingestion/watcher.py` — CLIP-index/delete images on file events
+- `backend/config.py` — `clip_auto_index` flag
+- `frontend/src/types.ts` + `App.tsx` — `visual` stat + split status sheet sections
+
+**Part A — status sheet split:** `/stats` now returns a `visual` count (the
+`homeintel_visual` CLIP collection), counted via the existing Qdrant client with **no
+CLIP model load**. The status sheet shows two sections: "Text index" (Documents /
+Images (captions) / Audio / Total chunks) and "Visual index" (Photos (CLIP)). This
+disambiguates caption *chunks* (text search) from CLIP *photos* (visual search).
+
+**Part B — live auto-indexing (`CLIP_AUTO_INDEX=true`):** the watcher now CLIP-indexes
+new/changed images into `homeintel_visual` and removes them on delete/move — so visual
+search stays current without re-running `index_visual.py`. Hooked in the **watcher**
+(not `ingest_file`/`reindex.py`) so the bulk tools stay fast and independent. CLIP work
+is wrapped in try/except (never breaks captioning) and runs even when captioning is
+skipped (CLIP doesn't need `OLLAMA_VISION_MODEL`). The shared `get_clip_store()`
+singleton means search and the watcher load the CLIP model at most once per process.
+
+Order of operations that was followed: caption reindex → bulk `index_visual.py` →
+enable `CLIP_AUTO_INDEX=true`. `index_visual.py` is now a recovery/rebuild tool only.
+
 ---
 
 ## Key Design Decisions & Rationale

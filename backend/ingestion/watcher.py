@@ -30,7 +30,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from config import settings
-from ingestion.pipeline import ingest_file
+from ingestion.pipeline import ingest_file, IMAGE_EXTENSIONS
 from vectorstore.qdrant import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -75,12 +75,14 @@ class _NASEventHandler(FileSystemEventHandler):
             return
         logger.info("Created: %s", event.src_path)
         self._ingest(event.src_path)
+        self._clip_index(event.src_path)
 
     def on_modified(self, event: FileSystemEvent) -> None:
         if event.is_directory or not self._should_handle(event.src_path):
             return
         logger.info("Modified: %s", event.src_path)
         self._ingest(event.src_path)
+        self._clip_index(event.src_path)
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory or not self._should_handle(event.src_path):
@@ -90,6 +92,7 @@ class _NASEventHandler(FileSystemEventHandler):
             self._vs.delete_file(event.src_path)
         except Exception:
             logger.exception("Failed to delete chunks for %s", event.src_path)
+        self._clip_delete(event.src_path)
 
     def on_moved(self, event: FileSystemEvent) -> None:
         if event.is_directory:
@@ -101,9 +104,11 @@ class _NASEventHandler(FileSystemEventHandler):
                 self._vs.delete_file(event.src_path)
             except Exception:
                 logger.exception("Failed to delete chunks for %s", event.src_path)
+            self._clip_delete(event.src_path)
         if self._should_handle(event.dest_path):
             logger.info("Moved (dst created): %s", event.dest_path)
             self._ingest(event.dest_path)
+            self._clip_index(event.dest_path)
 
     # ── ingestion ────────────────────────────────────────────────────────────
 
@@ -118,6 +123,35 @@ class _NASEventHandler(FileSystemEventHandler):
             logger.warning("File vanished before ingestion: %s", path)
         except Exception:
             logger.exception("Ingestion failed for %s", path)
+
+    # ── CLIP visual auto-indexing (CLIP_AUTO_INDEX=true) ───────────────────────
+
+    @staticmethod
+    def _is_image(path: str) -> bool:
+        return Path(path).suffix.lower() in IMAGE_EXTENSIONS
+
+    def _clip_index(self, path: str) -> None:
+        """Embed an image into homeintel_visual. Non-fatal — never breaks ingestion."""
+        if not settings.clip_auto_index or not self._is_image(path):
+            return
+        try:
+            from PIL import Image
+            from vectorstore.clip import get_clip_store
+            img = Image.open(path).convert("RGB")
+            get_clip_store().upsert(path, img)
+            logger.info("CLIP-indexed ← %s", path)
+        except Exception:
+            logger.exception("CLIP auto-index failed for %s", path)
+
+    def _clip_delete(self, path: str) -> None:
+        if not settings.clip_auto_index or not self._is_image(path):
+            return
+        try:
+            from vectorstore.clip import get_clip_store
+            get_clip_store().delete_file(path)
+            logger.info("CLIP-removed ← %s", path)
+        except Exception:
+            logger.exception("CLIP delete failed for %s", path)
 
 
 # ── public API ───────────────────────────────────────────────────────────────

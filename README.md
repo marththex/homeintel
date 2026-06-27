@@ -306,6 +306,10 @@ stored in the `homeintel_visual` Qdrant collection (one vector per photo, ~500 M
 Once indexed, tap **+ → Take a photo / Choose from library** in the web UI. Matches above
 0.70 cosine similarity are returned in a swipeable carousel with match-percentage labels.
 
+After the bulk backfill, set `CLIP_AUTO_INDEX=true` so the watcher keeps the visual index
+current — new/changed photos are CLIP-indexed automatically (and removed on delete), with
+no need to re-run `index_visual.py`. It then serves as a recovery/rebuild tool only.
+
 ### Faster ingestion (captions + documents)
 
 `reindex.py` ingests one file at a time by default. For the photo-caption job (the slow
@@ -437,6 +441,7 @@ homeintel/
 | `COLPALI_ENABLED` | `false` | Enable ColPali retrieval (run batch indexer first; OOMs with qwen3:14b — keep false) |
 | `COLPALI_MODEL` | `vidore/colpali-v1.2` | ColPali model |
 | `CLIP_MODEL` | `openai/clip-vit-large-patch14` | CLIP model for visual photo search |
+| `CLIP_AUTO_INDEX` | `false` | Watcher auto-CLIP-indexes new/changed photos (run bulk backfill first) |
 | `REDACT_SECRETS` | `true` | Redact passwords/keys/tokens at ingestion, context, and excerpts |
 | `DOCLING_VLM_ENABLED` | `false` | Docling VLM picture descriptions |
 

@@ -14,7 +14,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from PIL import Image
@@ -217,3 +217,18 @@ class CLIPVisualStore:
             return self._client.count(_collection_name()).count
         except Exception:
             return 0
+
+
+# ── Shared singleton ──────────────────────────────────────────────────────────
+# One CLIP model instance shared by the /visual-search endpoint and the watcher's
+# auto-indexer, so the model is loaded at most once per process.
+
+_store: Optional["CLIPVisualStore"] = None
+
+
+def get_clip_store() -> "CLIPVisualStore":
+    """Return the process-wide CLIPVisualStore singleton (lazy-loads the model)."""
+    global _store
+    if _store is None:
+        _store = CLIPVisualStore()
+    return _store

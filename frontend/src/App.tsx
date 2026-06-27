@@ -299,12 +299,17 @@ export default function App() {
 
         {stats && (
           <>
-            <div className="sheet-section-label">Indexed content</div>
+            <div className="sheet-section-label">Text index (searchable by keyword)</div>
             <div className="status-rows">
               <div className="status-row"><span>📄 Documents</span><span>{stats.document.toLocaleString()}</span></div>
-              <div className="status-row"><span>🖼️ Images</span><span>{stats.image.toLocaleString()}</span></div>
+              <div className="status-row"><span>🖼️ Images (captions)</span><span>{stats.image.toLocaleString()}</span></div>
               <div className="status-row"><span>🎵 Audio</span><span>{stats.audio.toLocaleString()}</span></div>
               <div className="status-row total"><span>Total chunks</span><span>{stats.total.toLocaleString()}</span></div>
+            </div>
+
+            <div className="sheet-section-label">Visual index (search by photo 📷)</div>
+            <div className="status-rows">
+              <div className="status-row"><span>🔍 Photos (CLIP)</span><span>{stats.visual.toLocaleString()}</span></div>
             </div>
           </>
         )}

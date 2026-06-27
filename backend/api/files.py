@@ -8,25 +8,15 @@ POST /visual-search          Upload an image, find visually similar photos via C
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
 
 from config import settings
-from vectorstore.clip import CLIPVisualStore
+from vectorstore.clip import get_clip_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-_clip: Optional[CLIPVisualStore] = None
-
-
-def _get_clip() -> CLIPVisualStore:
-    global _clip
-    if _clip is None:
-        _clip = CLIPVisualStore()
-    return _clip
 
 
 def _validate_path(path: str) -> Path:
@@ -61,7 +51,7 @@ async def visual_search(
     """
     data = await file.read()
     try:
-        results = _get_clip().search(image_bytes=data, top_k=top_k)
+        results = get_clip_store().search(image_bytes=data, top_k=top_k)
     except Exception as exc:
         logger.exception("Visual search failed")
         raise HTTPException(status_code=500, detail=str(exc))
