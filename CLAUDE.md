@@ -429,31 +429,39 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
    Fallback: use `Qwen/Qwen2.5-VL-3B-Instruct` or keep disabled and rely on Docling's
    text extraction only. Use `OLLAMA_VISION_MODEL` for image captioning instead.
 
-7. **Ollama on Windows starts automatically** — the installer registers Ollama as a
+6. **Ollama on Windows starts automatically** — the installer registers Ollama as a
    Windows service. Running `ollama serve` manually will fail with "address already
    in use". Just use `ollama pull` and `ollama list` directly.
 
-8. **VSCode terminal PATH** — after installing Ollama, VSCode terminals need a full
+7. **VSCode terminal PATH** — after installing Ollama, VSCode terminals need a full
    restart to pick up the updated PATH. Reloading the window is not enough.
 
-9. **PyTorch CUDA** — RTX 5080 uses CUDA driver 13.2 but PyTorch only supports up
+8. **PyTorch CUDA** — RTX 5080 uses CUDA driver 13.2 but PyTorch only supports up
    to cu128. Use `--index-url https://download.pytorch.org/whl/cu128`. The cu128
    build is backward compatible with CUDA 13.x drivers.
 
-10. **NFS mount.exe missing** — Windows NFS feature `ServicesForNFS-ClientOnly`
+9. **NFS mount.exe missing** — Windows NFS feature `ServicesForNFS-ClientOnly`
     installs without `mount.exe`. Need to also enable `ClientForNFS-Infrastructure`.
     Ultimately went with SMB instead.
 
-11. **SMB mount persistence** — `net use Z: \\YOUR_NAS_HOST\NFSdocker /persistent:yes`
+10. **SMB mount persistence** — `net use Z: \\YOUR_NAS_HOST\NFSdocker /persistent:yes`
     persists across reboots. Replace `YOUR_NAS_HOST` with your TrueNAS IP or hostname.
 
-12. **SMB PermissionError on some NAS files** — some files are visible in directory
+11. **SMB PermissionError on some NAS files** — some files are visible in directory
     listings but not readable over SMB due to TrueNAS ACLs. Fix by running
     `chmod -R a+rX /mnt/Pool/NFSdocker` on the TrueNAS shell. The `X` (capital)
     only adds execute on directories, not files. `reindex.py` catches `PermissionError`
     and treats it as a skip (not an error) so the rest of the index continues.
 
-13. **reindex.py always does a full re-process** — there is no incremental/skip logic.
+14. **ColPali install overwrites PyTorch with CPU build** — `pip install colpali-engine`
+    pulls in a CPU-only PyTorch as a dependency. Always reinstall CUDA PyTorch after:
+    ```bash
+    pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
+    ```
+    Verify with `python -c "import torch; print(torch.cuda.is_available())"` → must be `True`.
+    The cu128 index only has torch 2.7.0+ (not 2.5.x) — pin to `>=2.7.0` in requirements.txt.
+
+12. **reindex.py always does a full re-process** — there is no incremental/skip logic.
     Every file is `delete_file()` + `ingest_file()` on every run. This is intentional:
     the watcher handles day-to-day updates; `reindex.py` is a recovery tool. Incremental
     skipping would be wrong after chunking/embedding setting changes anyway.

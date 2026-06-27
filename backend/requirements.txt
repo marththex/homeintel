@@ -22,10 +22,10 @@ transformers>=5.0.0                     # required by docling for rt_detr_v2 lay
 sentence-transformers>=3.0.0            # CrossEncoder for bge-reranker-v2-m3
 
 # ── Image processing ──────────────────────────────────────────────────────────
-Pillow==11.0.0
+Pillow>=11.0.0
 open-clip-torch==2.29.0                 # CLIP embeddings (Step 8 — image processor)
-torch==2.5.1                            # cu128 build recommended; see CLAUDE.md
-torchvision==0.20.1
+torch>=2.7.0                            # cu128 build required; see CLAUDE.md
+torchvision>=0.26.0
 
 # ── Audio / Speech ────────────────────────────────────────────────────────────
 faster-whisper==1.1.0                   # local speech-to-text (Step 8)
@@ -33,9 +33,9 @@ faster-whisper==1.1.0                   # local speech-to-text (Step 8)
 # ── Video ─────────────────────────────────────────────────────────────────────
 opencv-python-headless==4.10.0.84       # frame extraction (headless = no GUI deps)
 
-# ── ColPali visual retrieval (Step 7 — install separately before running run_colpali.py) ──
-# colpali-engine>=0.3.0              # ColPali model wrapper (vidore/colpali-v1.2)
-# pypdfium2>=4.0.0                   # PDF → PIL page renderer (no poppler required)
+# ── ColPali visual retrieval (Step 7) ────────────────────────────────────────
+colpali-engine>=0.3.0              # ColPali model wrapper (vidore/colpali-v1.2)
+pypdfium2>=4.0.0                   # PDF → PIL page renderer (no poppler required)
 
 # ── File watching ─────────────────────────────────────────────────────────────
 watchdog==6.0.0
