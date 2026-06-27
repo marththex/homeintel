@@ -98,6 +98,31 @@ def _to_point_id(hex32: str) -> str:
     return str(uuid.UUID(hex32))
 
 
+def _join_caption_chunks(chunks: list[str], overlap: int) -> str:
+    """
+    Reconstruct full text from ordered chunks produced by
+    RecursiveCharacterTextSplitter, removing the overlap region duplicated
+    between consecutive chunks.
+
+    For each chunk after the first, find the largest k (<= overlap) where the
+    accumulated text's suffix equals the next chunk's prefix, and append only
+    the non-overlapping remainder. Falls back to plain concatenation when no
+    overlap is found.
+    """
+    if not chunks:
+        return ""
+    out = chunks[0]
+    for nxt in chunks[1:]:
+        max_k = min(overlap, len(out), len(nxt))
+        k = 0
+        for cand in range(max_k, 0, -1):
+            if out[-cand:] == nxt[:cand]:
+                k = cand
+                break
+        out += nxt[k:]
+    return out
+
+
 # ── VectorStore ───────────────────────────────────────────────────────────────
 
 class VectorStore:
@@ -333,32 +358,54 @@ class VectorStore:
 
     def captions_for(self, file_paths: list[str]) -> dict[str, str]:
         """
-        Return {file_path: first-chunk text} for the given paths.
+        Return {file_path: full caption text} for the given image paths.
 
-        Used to attach captions to CLIP text->image results for display — the
-        visual collection stores no caption, so we look it up from the main
-        collection's chunk_index 0.
+        Prefers the `full_caption` payload field (written at ingestion on
+        chunk 0). For files indexed before that field existed, reconstructs the
+        caption from ALL chunks (ordered by chunk_index, overlap stripped).
+        Used to attach captions to image results for display.
         """
         if not file_paths:
             return {}
+
         out: dict[str, str] = {}
-        points, _ = self._client.scroll(
-            collection_name=settings.qdrant_collection_name,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(key="file_path", match=MatchAny(any=file_paths)),
-                    FieldCondition(key="chunk_index", match=MatchValue(value=0)),
-                ]
-            ),
-            with_payload=True,
-            with_vectors=False,
-            limit=len(file_paths),
-        )
-        for p in points:
-            payload = p.payload or {}
-            fp = payload.get("file_path")
-            if fp and fp not in out:
-                out[fp] = payload.get("page_content", "")
+        chunks_by_path: dict[str, list[tuple[int, str]]] = {}
+
+        next_offset = None
+        while True:
+            points, next_offset = self._client.scroll(
+                collection_name=settings.qdrant_collection_name,
+                scroll_filter=Filter(
+                    must=[FieldCondition(key="file_path", match=MatchAny(any=file_paths))]
+                ),
+                with_payload=True,
+                with_vectors=False,
+                limit=1000,
+                offset=next_offset,
+            )
+            for p in points:
+                payload = p.payload or {}
+                fp = payload.get("file_path")
+                if not fp:
+                    continue
+                if "full_caption" in payload and fp not in out:
+                    out[fp] = payload["full_caption"]
+                chunks_by_path.setdefault(fp, []).append(
+                    (payload.get("chunk_index", 0), payload.get("page_content", ""))
+                )
+            if next_offset is None:
+                break
+
+        # Fallback: reconstruct from chunks for any path lacking full_caption.
+        for fp in file_paths:
+            if fp in out:
+                continue
+            chunks = chunks_by_path.get(fp, [])
+            if not chunks:
+                continue
+            chunks.sort(key=lambda c: c[0])
+            out[fp] = _join_caption_chunks([t for _, t in chunks], settings.chunk_overlap)
+
         return out
 
     def indexed_file_paths(self) -> set[str]:

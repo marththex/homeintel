@@ -102,6 +102,12 @@ def ingest_file(path: str) -> int:
     now = datetime.now(timezone.utc).isoformat()
     documents: list[Document] = []
 
+    # For images, persist the complete (redacted) caption on chunk 0 so the UI
+    # can show the full caption even when it spans multiple chunks.
+    full_caption: Optional[str] = None
+    if modality == Modality.IMAGE:
+        full_caption = redact_secrets(text) if settings.redact_secrets else text
+
     for i, chunk in enumerate(chunks):
         # Strip secrets before they ever reach the vector store.
         if settings.redact_secrets:
@@ -117,6 +123,8 @@ def ingest_file(path: str) -> int:
         }
         if title:
             meta["title"] = title
+        if i == 0 and full_caption is not None:
+            meta["full_caption"] = full_caption
 
         documents.append(Document(page_content=chunk, metadata=meta))
 
