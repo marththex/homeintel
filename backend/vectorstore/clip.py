@@ -104,9 +104,26 @@ class CLIPVisualStore:
         device = next(self._model.parameters()).device
         inputs = self._processor(images=imgs, return_tensors="pt").to(device)
         with torch.no_grad():
-            feats = self._model.get_image_features(**inputs)
+            out = self._model.get_image_features(**inputs)
+            feats = self._project(out)
             feats = feats / feats.norm(dim=-1, keepdim=True)
         return feats.cpu().tolist()
+
+    def _project(self, out):
+        """
+        Return the image-embedding tensor across transformers versions.
+
+        transformers <5 returned the projected embeds directly from
+        get_image_features. transformers 5.x returns a BaseModelOutputWithPooling
+        whose pooler_output is already the projected image embedding
+        (projection_dim, 768 for ViT-L/14).
+        """
+        if torch.is_tensor(out):
+            return out
+        embeds = getattr(out, "image_embeds", None)
+        if embeds is not None:
+            return embeds
+        return out.pooler_output
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
