@@ -3,7 +3,7 @@ rag/chain.py — LangChain RAG chain: retrieve → format context → generate.
 """
 
 import logging
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -94,7 +94,7 @@ class RAGChain:
         question: str,
         modality_filter: Optional[str] = None,
         top_k: Optional[int] = None,
-    ):
+    ) -> Iterator[tuple[str, object]]:
         """
         Streaming RAG generator. Yields, in order:
           ("sources", list[Document])  — once, before any token

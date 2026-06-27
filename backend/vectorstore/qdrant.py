@@ -108,6 +108,11 @@ def _join_caption_chunks(chunks: list[str], overlap: int) -> str:
     accumulated text's suffix equals the next chunk's prefix, and append only
     the non-overlapping remainder. Falls back to plain concatenation when no
     overlap is found.
+
+    Note: This is best-effort for images indexed before the `full_caption`
+    payload field was added. A coincidental suffix/prefix match longer than
+    the true overlap could strip slightly too much; re-indexing populates
+    `full_caption` for an exact result.
     """
     if not chunks:
         return ""
@@ -371,6 +376,7 @@ class VectorStore:
         out: dict[str, str] = {}
         chunks_by_path: dict[str, list[tuple[int, str]]] = {}
 
+        # Scroll is filtered to the requested file_paths (MatchAny), so it pages through only those photos' chunks — not the whole collection.
         next_offset = None
         while True:
             points, next_offset = self._client.scroll(
