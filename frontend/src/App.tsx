@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { sendChat, visualSearch } from "./api";
+import { sendChatStream, visualSearch } from "./api";
 import { ChatMessage } from "./components/ChatMessage";
 import { Header } from "./components/Header";
 import { BottomSheet } from "./components/BottomSheet";
@@ -33,6 +33,7 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,32 +56,42 @@ export default function App() {
     const q = input.trim();
     if (!q || loading) return;
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const userMsg: Msg = { id: nextId(), role: "user", content: q };
-    setMessages((prev) => [...prev, userMsg]);
+    const assistantId = nextId();
+    const assistantMsg: Msg = { id: assistantId, role: "assistant", content: "", streaming: true };
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setInput("");
     setLoading(true);
 
+    const patch = (p: Partial<Msg>) =>
+      setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, ...p } : m)));
+    const append = (delta: string) =>
+      setMessages((prev) =>
+        prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + delta } : m))
+      );
+
     try {
-      const data = await sendChat(q, modality || undefined, topK ?? undefined);
-      const assistantMsg: Msg = {
-        id: nextId(),
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources,
-        chunks_used: data.chunks_used,
-        model: data.model,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId(),
-          role: "assistant",
+      await sendChatStream(q, modality || undefined, topK ?? undefined, {
+        signal: controller.signal,
+        onSources: (sources, meta) =>
+          patch({ sources, model: meta.model, chunks_used: meta.chunks_used }),
+        onToken: (delta) => append(delta),
+        onDone: () => patch({ streaming: false }),
+        onError: () =>
+          patch({ content: "Failed to generate a response.", error: true, streaming: false }),
+      });
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") {
+        patch({
           content: "Failed to reach the API. Is the backend running?",
           error: true,
-        },
-      ]);
+          streaming: false,
+        });
+      }
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 0);
@@ -159,13 +170,6 @@ export default function App() {
         {messages.map((m) => (
           <ChatMessage key={m.id} message={m} />
         ))}
-        {loading && (
-          <div className="message message-assistant">
-            <div className="bubble bubble-assistant bubble-loading">
-              <span className="dot" /><span className="dot" /><span className="dot" />
-            </div>
-          </div>
-        )}
         <div ref={bottomRef} />
       </main>
 

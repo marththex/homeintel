@@ -13,6 +13,7 @@ export interface ChatMessage {
   chunks_used?: number;
   model?: string;
   error?: boolean;
+  streaming?: boolean;
   // Visual search
   visualResults?: VisualResult[];
   queryImageUrl?: string;

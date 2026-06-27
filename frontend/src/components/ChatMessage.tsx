@@ -27,7 +27,13 @@ export function ChatMessage({ message }: Props) {
           <p className="bubble-text">{message.content}</p>
         ) : (
           <div className="bubble-text markdown">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            {message.content && <ReactMarkdown>{message.content}</ReactMarkdown>}
+            {message.streaming && !message.content && (
+              <span className="stream-dots">
+                <span className="dot" /><span className="dot" /><span className="dot" />
+              </span>
+            )}
+            {message.streaming && message.content && <span className="stream-caret" />}
           </div>
         )}
 

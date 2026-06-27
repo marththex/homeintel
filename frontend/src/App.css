@@ -537,3 +537,16 @@ body {
   .source-path { display: none; }
   .carousel-slide { max-height: 60vh; }
 }
+
+/* Streaming indicators */
+.stream-dots { display: inline-flex; gap: 5px; align-items: center; }
+.stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--text-muted);
+  animation: caret-blink 1s steps(1) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
