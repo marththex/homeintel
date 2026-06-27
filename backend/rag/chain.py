@@ -10,8 +10,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
 from config import settings
-from rag.prompts import SYSTEM_TEMPLATE
+from rag.prompts import SYSTEM_TEMPLATE, IMAGE_SEARCH_TEMPLATE
 from rag.retriever import retrieve
+from vectorstore.qdrant import Modality
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,18 @@ class RAGChain:
         else:
             context = "(no relevant context found in your files)"
 
+        # Image search is a "show me matching photos" task, not strict Q&A.
+        # Use the photo-search prompt when the query targets images (explicit
+        # filter, or every retrieved doc is an image) so the model presents the
+        # matches instead of refusing.
+        is_image_query = bool(docs) and (
+            modality_filter == Modality.IMAGE.value
+            or all(d.metadata.get("modality") == Modality.IMAGE.value for d in docs)
+        )
+        template = IMAGE_SEARCH_TEMPLATE if is_image_query else SYSTEM_TEMPLATE
+
         messages = [
-            SystemMessage(content=SYSTEM_TEMPLATE.format(context=context)),
+            SystemMessage(content=template.format(context=context)),
             HumanMessage(content=question),
         ]
 
