@@ -12,6 +12,7 @@ import hashlib
 import io
 import logging
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -96,30 +97,61 @@ class CLIPVisualStore:
         logger.info("Created CLIP collection: %s", _collection_name())
 
     def _embed_image(self, img: Image.Image) -> list[float]:
+        return self._embed_images([img])[0]
+
+    def _embed_images(self, imgs: list[Image.Image]) -> list[list[float]]:
+        """Embed a batch of images in a single GPU forward pass."""
         device = next(self._model.parameters()).device
-        inputs = self._processor(images=img, return_tensors="pt").to(device)
+        inputs = self._processor(images=imgs, return_tensors="pt").to(device)
         with torch.no_grad():
             feats = self._model.get_image_features(**inputs)
             feats = feats / feats.norm(dim=-1, keepdim=True)
-        return feats[0].cpu().tolist()
+        return feats.cpu().tolist()
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
     def upsert(self, file_path: str, img: Image.Image) -> None:
         """Embed one image and upsert into the visual collection."""
-        vec = self._embed_image(img)
-        p = Path(file_path)
-        from datetime import datetime, timezone
-        point = PointStruct(
-            id=_point_id(file_path),
-            vector={_VECTOR_NAME: vec},
-            payload={
-                "file_path": file_path,
-                "file_name": p.name,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-        self._client.upsert(collection_name=_collection_name(), points=[point])
+        self.upsert_batch([(file_path, img)])
+
+    def upsert_batch(self, items: list[tuple[str, Image.Image]]) -> None:
+        """
+        Embed and upsert a batch of (file_path, image) pairs in one GPU pass
+        and one Qdrant request. Much faster than calling upsert() per image.
+        """
+        if not items:
+            return
+        vecs = self._embed_images([img for _, img in items])
+        now = datetime.now(timezone.utc).isoformat()
+        points = [
+            PointStruct(
+                id=_point_id(fp),
+                vector={_VECTOR_NAME: vec},
+                payload={"file_path": fp, "file_name": Path(fp).name, "created_at": now},
+            )
+            for (fp, _), vec in zip(items, vecs)
+        ]
+        self._client.upsert(collection_name=_collection_name(), points=points)
+
+    def indexed_file_paths(self) -> set[str]:
+        """Return all file_paths already in the visual collection (resume support)."""
+        paths: set[str] = set()
+        next_offset = None
+        while True:
+            points, next_offset = self._client.scroll(
+                collection_name=_collection_name(),
+                with_payload=["file_path"],
+                with_vectors=False,
+                limit=1000,
+                offset=next_offset,
+            )
+            for p in points:
+                fp = (p.payload or {}).get("file_path")
+                if fp:
+                    paths.add(fp)
+            if next_offset is None:
+                break
+        return paths
 
     def delete_file(self, file_path: str) -> None:
         self._client.delete(

@@ -294,14 +294,35 @@ conda activate homeintel
 cd backend
 # Temporarily remove Z:/marcus_photoprism from WATCHER_EXCLUDE_PATHS in .env first
 python ../scripts/index_visual.py --path Z:/marcus_photoprism/originals
-python ../scripts/index_visual.py --clear --path Z:/photos   # wipe + reindex
+python ../scripts/index_visual.py --clear --path Z:/photos     # wipe + reindex
+python ../scripts/index_visual.py --skip-existing               # resume interrupted run
+python ../scripts/index_visual.py --batch-size 32              # bigger GPU batches
 # Restore WATCHER_EXCLUDE_PATHS after
 ```
 
-Photos are stored in the `homeintel_visual` Qdrant collection (one vector per photo,
-~500 MB VRAM, ~20–40 min for ~3k photos on RTX 5080). Once indexed, tap **+ → Take a
-photo / Choose from library** in the web UI. Matches above 0.70 cosine similarity are
-returned in a swipeable carousel with match-percentage labels.
+The indexer batches the CLIP forward pass (`--batch-size`, default 16) and reads images
+in parallel (`--read-workers`, default 4) — ~5–8× faster than one-at-a-time. Photos are
+stored in the `homeintel_visual` Qdrant collection (one vector per photo, ~500 MB VRAM).
+Once indexed, tap **+ → Take a photo / Choose from library** in the web UI. Matches above
+0.70 cosine similarity are returned in a swipeable carousel with match-percentage labels.
+
+### Faster ingestion (captions + documents)
+
+`reindex.py` ingests one file at a time by default. For the photo-caption job (the slow
+one — ~5–7 s/photo on the vision model), parallelize it:
+
+```bash
+# Set Ollama to serve concurrent requests, then restart the Ollama service:
+setx OLLAMA_NUM_PARALLEL 3
+
+python ../scripts/reindex.py --path Z:/photos --ext .jpg .jpeg .png --workers 3
+python ../scripts/reindex.py --skip-existing --workers 3        # resume where you left off
+```
+
+`--workers N` issues N captions concurrently (network-bound, so the GPU stays busy);
+pair it with `OLLAMA_NUM_PARALLEL=N`. Drop to 2 if `qwen2.5vl:7b` OOMs on 16 GB, or switch
+`OLLAMA_VISION_MODEL=qwen2.5vl:3b` to roughly halve caption time. `--skip-existing` skips
+files already in Qdrant, so a cancelled run (Ctrl+C) resumes cleanly.
 
 ---
 

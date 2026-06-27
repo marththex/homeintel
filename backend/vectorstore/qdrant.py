@@ -330,6 +330,31 @@ class VectorStore:
         except Exception:
             return 0
 
+    def indexed_file_paths(self) -> set[str]:
+        """
+        Return the set of all file_paths currently in the collection.
+
+        Used by reindex.py --skip-existing to resume an interrupted run: one
+        scroll pass (file_path payload only) instead of a count query per file.
+        """
+        paths: set[str] = set()
+        next_offset = None
+        while True:
+            points, next_offset = self._client.scroll(
+                collection_name=settings.qdrant_collection_name,
+                with_payload=["file_path"],
+                with_vectors=False,
+                limit=1000,
+                offset=next_offset,
+            )
+            for p in points:
+                fp = (p.payload or {}).get("file_path")
+                if fp:
+                    paths.add(fp)
+            if next_offset is None:
+                break
+        return paths
+
     def stats(self) -> dict[str, Any]:
         """Per-modality chunk breakdown."""
         total = self.count()

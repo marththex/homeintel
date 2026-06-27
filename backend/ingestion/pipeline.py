@@ -38,6 +38,11 @@ def _get_vs() -> VectorStore:
     return _vs
 
 
+def get_vectorstore() -> VectorStore:
+    """Public accessor for the pipeline's VectorStore singleton (used by reindex.py)."""
+    return _get_vs()
+
+
 def ingest_file(path: str) -> int:
     """
     Ingest a single file into Qdrant.

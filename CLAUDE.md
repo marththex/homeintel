@@ -599,7 +599,20 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
     Verify with `python -c "import torch; print(torch.cuda.is_available())"` → must be `True`.
     The cu128 index only has torch 2.7.0+ (not 2.5.x) — pin to `>=2.7.0` in requirements.txt.
 
-12. **reindex.py always does a full re-process** — there is no incremental/skip logic.
-    Every file is `delete_file()` + `ingest_file()` on every run. This is intentional:
-    the watcher handles day-to-day updates; `reindex.py` is a recovery tool. Incremental
-    skipping would be wrong after chunking/embedding setting changes anyway.
+12. **reindex.py — full re-process by default, opt-in resume** — by default every file
+    is `delete_file()` + `ingest_file()` on every run (correct after chunking/embedding
+    setting changes). Pass `--skip-existing` to skip files already in Qdrant — this fetches
+    all indexed `file_path`s in one scroll pass (`VectorStore.indexed_file_paths()`) and is
+    the way to **resume an interrupted run**: Ctrl+C, then re-run with `--skip-existing`.
+
+13. **Ingestion speed — concurrency + batching:**
+    - `reindex.py --workers N` ingests N files concurrently via a thread pool. The dominant
+      per-image cost is the Ollama vision caption (network-bound), so threads keep the GPU
+      busy. **Must pair with `OLLAMA_NUM_PARALLEL=N`** on the Ollama service or the requests
+      queue serially. Start with `--workers 3`; drop to 2 if `qwen2.5vl:7b` OOMs on 16 GB.
+      Set Ollama parallelism on Windows: `setx OLLAMA_NUM_PARALLEL 3` then restart the
+      Ollama service (Task Manager → Services, or re-login).
+    - Switching `OLLAMA_VISION_MODEL=qwen2.5vl:3b` roughly halves caption time vs `:7b`.
+    - `index_visual.py` batches the CLIP forward pass (`--batch-size`, default 16) and reads
+      images in parallel (`--read-workers`, default 4) — ~5-8x faster than one-at-a-time.
+      It also supports `--skip-existing` for resume.
