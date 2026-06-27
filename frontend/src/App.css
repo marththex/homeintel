@@ -265,6 +265,13 @@ body {
   flex-shrink: 0;
 }
 
+.carousel-active-caption {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
 .carousel-footer {
   display: flex;
   align-items: center;

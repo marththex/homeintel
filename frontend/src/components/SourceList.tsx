@@ -24,6 +24,7 @@ export function SourceList({ sources }: Props) {
   const photos: CarouselPhoto[] = imageSources.map((s) => ({
     filePath: s.file_path,
     fileName: s.file_name,
+    caption: s.excerpt,
   }));
 
   return (

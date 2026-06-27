@@ -4,7 +4,8 @@ import { fileUrl } from "../api";
 export interface CarouselPhoto {
   filePath: string;
   fileName: string;
-  label?: string; // e.g. "94% match" or a caption
+  label?: string;   // e.g. "94% match"
+  caption?: string; // this photo's own description (always matches the image)
 }
 
 interface Props {
@@ -55,6 +56,10 @@ export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
           </div>
         ))}
       </div>
+
+      {shown[active]?.caption && (
+        <p className="carousel-active-caption">{shown[active].caption}</p>
+      )}
 
       <div className="carousel-footer">
         <span className="carousel-counter">
