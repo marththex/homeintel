@@ -22,8 +22,9 @@ class RAGChain:
     """
     Stateless RAG chain.
 
-    run() retrieves relevant chunks from ChromaDB, formats them as context,
+    run() retrieves relevant chunks from Qdrant, formats them as context,
     calls the Ollama LLM, and returns the answer alongside the source docs.
+    run_stream() does the same but yields token-by-token.
     """
 
     def __init__(self) -> None:
@@ -33,21 +34,13 @@ class RAGChain:
         )
         logger.info("RAGChain ready — model=%s", settings.ollama_llm_model)
 
-    def run(
+    def _prepare(
         self,
         question: str,
         modality_filter: Optional[str] = None,
         top_k: Optional[int] = None,
-    ) -> dict:
-        """
-        Execute the full RAG pipeline.
-
-        Returns:
-            {
-                "answer": str,
-                "docs":   list[Document],
-            }
-        """
+    ) -> tuple[list, list[Document]]:
+        """Retrieve context and build the LLM messages. Shared by run/run_stream."""
         docs: list[Document] = retrieve(question, modality_filter, top_k)
 
         if docs:
@@ -79,19 +72,46 @@ class RAGChain:
             SystemMessage(content=template.format(context=context)),
             HumanMessage(content=question),
         ]
+        return messages, docs
 
+    def run(
+        self,
+        question: str,
+        modality_filter: Optional[str] = None,
+        top_k: Optional[int] = None,
+    ) -> dict:
+        """Blocking RAG: returns {"answer": str, "docs": list[Document]}."""
+        messages, docs = self._prepare(question, modality_filter, top_k)
         logger.info(
-            "Calling LLM — model=%s docs=%d question=%r",
-            settings.ollama_llm_model,
-            len(docs),
-            question[:80],
+            "Calling LLM (invoke) — model=%s docs=%d question=%r",
+            settings.ollama_llm_model, len(docs), question[:80],
         )
         response = self._llm.invoke(messages)
+        return {"answer": response.content, "docs": docs}
 
-        return {
-            "answer": response.content,
-            "docs": docs,
-        }
+    def run_stream(
+        self,
+        question: str,
+        modality_filter: Optional[str] = None,
+        top_k: Optional[int] = None,
+    ):
+        """
+        Streaming RAG generator. Yields, in order:
+          ("sources", list[Document])  — once, before any token
+          ("token", str)               — per streamed delta
+          ("done", None)               — once, last
+        """
+        messages, docs = self._prepare(question, modality_filter, top_k)
+        yield ("sources", docs)
+        logger.info(
+            "Calling LLM (stream) — model=%s docs=%d question=%r",
+            settings.ollama_llm_model, len(docs), question[:80],
+        )
+        for chunk in self._llm.stream(messages):
+            delta = chunk.content
+            if delta:
+                yield ("token", delta)
+        yield ("done", None)
 
 
 _chain: Optional[RAGChain] = None
