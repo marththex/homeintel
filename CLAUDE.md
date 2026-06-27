@@ -21,7 +21,7 @@ This is a real deployment on real personal infrastructure — not a demo or note
 |---|---|---|
 | PC | Windows 11 | NVIDIA RTX 5080, runs Ollama + FastAPI + React |
 | NAS | TrueNAS | SMB share mounted as `Z:` on PC |
-| LLM | PC (GPU) | qwen3.5:9b via Ollama at `http://localhost:11434` |
+| LLM | PC (GPU) | qwen3:14b via Ollama at `http://localhost:11434` |
 | Embeddings | PC (GPU) | nomic-embed-text via Ollama |
 | Vector Store | NAS | Qdrant (Docker container on NAS), REST API over LAN |
 | Source Files | NAS | Watched at the NAS root path |
@@ -72,13 +72,17 @@ QDRANT_COLLECTION_NAME=homeintel
 QDRANT_API_KEY=
 EMBED_DIM=768
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_LLM_MODEL=qwen3.5:9b
+OLLAMA_LLM_MODEL=qwen3:14b
 OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_VISION_MODEL=                  # set to e.g. qwen2.5vl:7b to enable image captioning
+WHISPER_MODEL_SIZE=base
 CHUNK_SIZE=512
 CHUNK_OVERLAP=64
 RETRIEVAL_TOP_K=6
 RERANKER_ENABLED=true
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+COLPALI_ENABLED=false
+COLPALI_MODEL=vidore/colpali-v1.2
 DOCLING_VLM_ENABLED=false
 DOCLING_VLM_MODEL=Qwen/Qwen2.5-VL-7B-Instruct
 API_HOST=0.0.0.0
@@ -86,6 +90,22 @@ API_PORT=8000
 LOG_LEVEL=info
 SKIP_LLM_HEALTH_CHECK=false
 ```
+
+**VRAM budget on RTX 5080 (16 GB) during normal inference:**
+
+| Model | VRAM |
+|---|---|
+| qwen3:14b (Q4_K_M) | ~9–10 GB |
+| nomic-embed-text | ~270 MB |
+| bge-reranker-v2-m3 | ~1.1 GB |
+| **Headroom** | **~5 GB** |
+
+ColPali (~8 GB) is a separate batch job — never loaded concurrently with inference.
+Vision model (`qwen2.5vl:7b`, ~5 GB) only active during watcher ingestion of images.
+
+**LLM choice rationale:** `qwen3:14b` was chosen over `qwen3.5:9b` for better
+multi-step reasoning quality in RAG Q&A. Both fit in 16 GB with embeddings +
+reranker. `qwen3:32b` requires ~19 GB at Q4_K_M and does not fit.
 
 **Important quirk:** `SUPPORTED_EXTENSIONS` and `WATCHER_EXCLUDE_PATHS` are plain
 comma-separated strings (NOT JSON arrays) because pydantic-settings v2 tries to
@@ -245,54 +265,57 @@ verified working (SMB write, embeddings, upsert/query/delete). It has been
 - Retriever now fetches 3×top_k candidates from Qdrant, then reranks with `bge-reranker-v2-m3` before truncating to `RETRIEVAL_TOP_K` — reranker is lazy-loaded on first query (first call is slow while model downloads)
 - `RERANKER_ENABLED=false` disables reranking and falls back to raw RRF order (useful for latency testing)
 
-### ⬜ Step 5 — File Watcher (TODO)
-**Target files:**
+### ✅ Step 5 — File Watcher (COMPLETE)
+**Files created:**
 - `backend/ingestion/watcher.py`
 
-**What it should do:**
-- Watch `NAS_WATCH_PATH` recursively using watchdog
-- Respect `WATCHER_EXCLUDE_PATHS` (especially `<NAS_ROOT>/homeintel/qdrant_storage`)
-- On file created/modified: delete old chunks → re-ingest
-- On file deleted: delete chunks from Qdrant
-- Filter by `SUPPORTED_EXTENSIONS`
-- Handle SMB disconnection gracefully (retry logic)
+**What it does:**
+- Watches `NAS_WATCH_PATH` recursively with watchdog `Observer`
+- Respects `WATCHER_EXCLUDE_PATHS` and `SUPPORTED_EXTENSIONS` on every event
+- `on_created` / `on_modified` → `delete_file()` + `ingest_file()`
+- `on_deleted` → `delete_file()` only; `on_moved` → delete src + ingest dst
+- SMB disconnection recovery: catches `OSError`/`PermissionError` and restarts observer with exponential backoff (5s → 10s → 30s → 60s → 120s)
+- Auto-started in FastAPI lifespan via `start_watcher()` — runs as daemon thread
 
-### ⬜ Step 6 — React Frontend (TODO)
-**Target files:**
-- `frontend/` — full React + Vite app
+### ✅ Step 6 — React Frontend (COMPLETE)
+**Files created:**
+- `frontend/` — Vite + React + TypeScript app at `http://localhost:5173`
 
-**What it should do:**
-- Chat interface with message history
-- Show source files used for each answer (with file path + modality icon)
-- Indexing status bar (chunk counts by modality)
-- Responsive, clean UI
+**What it does:**
+- Dark-themed chat UI with full message history
+- Source attribution per answer: file name, file path, modality icon (📄/🖼️/🎵)
+- Per-answer meta: chunk count and model name
+- Modality filter dropdown (All / Documents / Images / Audio)
+- Status bar: Ollama + Qdrant health dots + chunk counts by modality, refreshes every 30s
+- Enter to send, Shift+Enter for newline
 
-### ⬜ Step 7 — ColPali Visual Retrieval (TODO)
-**Target files:**
-- `backend/ingestion/processors/colpali.py` — renders PDF pages to images, generates ColPali embeddings per page
+### ✅ Step 7 — ColPali Visual Retrieval (COMPLETE)
+**Files created:**
+- `backend/ingestion/processors/colpali.py` — PDF page rendering + ColPali embedding
+- `scripts/run_colpali.py` — batch indexer
 
-**What it should do:**
-- Route by document type: run ColPali only on visually-dense documents (v1 heuristic: PDFs with detected images/charts from Docling metadata, or a manual per-directory allowlist)
-- Render each qualifying PDF page to an image (e.g. via `pdf2image`)
-- Generate ColPali multi-vector embeddings per page using the `vidore/colpali-v1.2` model
-- Store page-image embeddings as a separate named vector field (`"colpali"`) in the same Qdrant collection, or in a sibling collection if co-location proves awkward — decide during implementation
-- Retrieval: ColPali visual results merged with hybrid text results before reranking
-- Opt-in per document type — not applied to the full corpus by default
+**What it does:**
+- Renders PDF pages via `pypdfium2` (no poppler dependency)
+- Embeds each page as 128-dim patch multi-vectors using `vidore/colpali-v1.2`
+- Stored in sibling collection `homeintel_colpali` (separate from text chunks to keep stats clean)
+- `query_colpali()` uses MaxSim scoring in Qdrant
+- Retrieval merge gated on `COLPALI_ENABLED=true` — ColPali hits merged with text results before reranking
+- `run_colpali.py` walks NAS, respects exclude paths, indexes all PDFs (~5s/page on RTX 5080)
 
 **Resource notes:**
-- ColPali indexing is GPU-accelerated but slow for large PDFs (~5s/page on RTX 5080)
-- Storage growth: ~1 MB per page for ColPali embeddings
-- Run as a separate batch process rather than inline with the file watcher
+- ColPali model: ~8 GB VRAM — run batch indexer with Ollama stopped to free VRAM
+- Extra deps: `pip install colpali-engine>=0.3.0 pypdfium2>=4.0.0` (commented out in requirements.txt)
+- Storage: ~1 MB per page in Qdrant
 
-### ⬜ Step 8 — Image & Audio Processors (TODO)
-**Target files:**
+### ✅ Step 8 — Image & Audio Processors (COMPLETE)
+**Files created:**
 - `backend/ingestion/processors/image.py`
 - `backend/ingestion/processors/audio.py`
 
-**What it should do:**
-- Images: OpenCLIP embeddings + Qwen3.5 vision captions
-- Audio: Faster-Whisper transcription → text chunks → embeddings
-- Both use GPU via CUDA
+**What it does:**
+- Images: Ollama vision API caption (`OLLAMA_VISION_MODEL`) → text → nomic-embed-text + BM25 pipeline; opt-in (empty = skip images)
+- Audio: faster-whisper transcription (GPU, lazy singleton, `WHISPER_MODEL_SIZE`) → text chunks → embeddings
+- Both integrated into `pipeline.py` routing — watcher auto-ingests images/audio on file events
 
 ---
 
@@ -312,9 +335,16 @@ User wants cross-modal search — a single query should search docs, photos, and
 audio transcripts simultaneously. Modality is stored as metadata for filtering
 when needed.
 
-**Why nomic-embed-text instead of Qwen3.5 for embeddings?**
+**Why nomic-embed-text instead of the LLM for embeddings?**
 Speed. nomic-embed-text is a dedicated embedding model — much faster than using
-the LLM for embeddings. Frees Qwen3.5 for generation only.
+qwen3:14b for embeddings. Frees the LLM for generation only.
+
+**Why qwen3:14b over qwen3.5:9b?**
+Better multi-step reasoning for RAG Q&A. Both fit in 16 GB VRAM alongside nomic
++ reranker (~10.5 GB combined). qwen3.5:9b excels at coding speed but qwen3:14b
+has a stronger reasoning score for document Q&A tasks. qwen3:32b requires ~19 GB
+and does not fit. Switch back to qwen3.5:9b via `OLLAMA_LLM_MODEL=qwen3.5:9b`
+if response latency is too high.
 
 **Why SMB over NFS for NAS mount?**
 NFS `mount.exe` was missing from Windows NFS client install (only `nfsadmin.exe`
@@ -353,9 +383,11 @@ ollama serve
 # Check running models
 ollama list
 
-# Pull a model
-ollama pull qwen3.5:9b
+# Pull models
+ollama pull qwen3:14b
 ollama pull nomic-embed-text
+# Optional vision model for image captioning:
+# ollama pull qwen2.5vl:7b
 
 # Start full Docker stack
 cd <repo>
@@ -387,9 +419,9 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
    (~500 MB) on first use to `~/.cache/docling`. Subsequent runs use the cache.
 
 5. **Docling VLM VRAM** — `DOCLING_VLM_ENABLED=true` loads Qwen2.5-VL-7B-Instruct
-   alongside qwen3.5:9b + nomic-embed-text. On RTX 5080 (16 GB VRAM), this may OOM
-   if all models are loaded simultaneously. Fallback: use `Qwen/Qwen2.5-VL-3B-Instruct`
-   or disable VLM enrichment and rely on Docling's text extraction only.
+   alongside qwen3:14b + nomic-embed-text. On RTX 5080 (16 GB VRAM), this will OOM.
+   Fallback: use `Qwen/Qwen2.5-VL-3B-Instruct` or keep disabled and rely on Docling's
+   text extraction only. Use `OLLAMA_VISION_MODEL` for image captioning instead.
 
 7. **Ollama on Windows starts automatically** — the installer registers Ollama as a
    Windows service. Running `ollama serve` manually will fail with "address already

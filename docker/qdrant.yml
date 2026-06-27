@@ -18,11 +18,10 @@ services:
       - "6333:6333"   # REST API (used by Python client)
       - "6334:6334"   # gRPC (optional)
     volumes:
-      - ./qdrant_storage:/qdrant/storage   # persists on NAS storage
-    environment:
-      # Set QDRANT_API_KEY in .env if you enable auth.
-      # Leave empty (default) for no auth on a trusted LAN.
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - /nfs/qdrant_storage:/qdrant/storage   # persists on NAS-shared /nfs/
+    # No environment block — omitting QDRANT__SERVICE__API_KEY means no auth
+    # required. If you add auth later, set it explicitly (empty string triggers
+    # a Qdrant bug that requires a key but rejects everything).
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:6333/healthz"]
       interval: 30s
