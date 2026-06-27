@@ -47,27 +47,36 @@ export async function sendChatStream(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  const dispatchFrame = (frame: string) => {
+    const { event, data } = parseFrame(frame);
+    if (!event) return;
+    if (event === "sources") {
+      handlers.onSources?.(data.sources, { model: data.model, chunks_used: data.chunks_used });
+    } else if (event === "token") {
+      handlers.onToken?.(data.delta);
+    } else if (event === "done") {
+      handlers.onDone?.();
+    } else if (event === "error") {
+      handlers.onError?.(data?.detail ?? "stream error");
+    }
+  };
 
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const { event, data } = parseFrame(frame);
-      if (!event) continue;
-      if (event === "sources") {
-        handlers.onSources?.(data.sources, { model: data.model, chunks_used: data.chunks_used });
-      } else if (event === "token") {
-        handlers.onToken?.(data.delta);
-      } else if (event === "done") {
-        handlers.onDone?.();
-      } else if (event === "error") {
-        handlers.onError?.(data?.detail ?? "stream error");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        dispatchFrame(frame);
       }
     }
+    buffer += decoder.decode();
+    if (buffer.trim()) dispatchFrame(buffer);
+  } finally {
+    reader.cancel().catch(() => {});
   }
 }
 
