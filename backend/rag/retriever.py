@@ -83,6 +83,15 @@ def retrieve(
             logger.warning("Unknown modality_filter %r — ignoring", modality_filter)
 
     final_k = _resolve_top_k(modality, top_k)
+
+    # Image queries: CLIP text->image search (true visual relevance) instead of
+    # caption keyword matching. Falls back to the caption flow if it finds nothing.
+    if modality == Modality.IMAGE and settings.clip_text_search:
+        clip_docs = _retrieve_images_clip(question, final_k)
+        if clip_docs:
+            logger.debug("CLIP text->image returned %d photo(s) for %r", len(clip_docs), question)
+            return clip_docs
+        logger.debug("CLIP text->image found nothing — falling back to caption search")
     # Image captions can span >1 chunk, so a single photo may appear multiple
     # times. Fetch extra candidates (and dedupe below) so "top N" still yields
     # N distinct photos.
@@ -112,6 +121,42 @@ def retrieve(
         "Retrieved %d chunks for query: %r (top_k=%d reranker=%s colpali=%s)",
         len(docs), question, final_k, settings.reranker_enabled, settings.colpali_enabled,
     )
+    return docs
+
+
+def _retrieve_images_clip(question: str, k: int) -> list[Document]:
+    """
+    CLIP text->image retrieval for image queries.
+
+    Encodes the query with CLIP, finds the most visually relevant photos in
+    homeintel_visual, then attaches each photo's caption (from the main
+    collection) for display. Already one-per-photo and ranked, so it bypasses
+    reranking and dedup.
+    """
+    try:
+        from vectorstore.clip import get_clip_store
+        results = get_clip_store().search_by_text(question, top_k=k)
+    except Exception as exc:
+        logger.warning("CLIP text->image failed (%s) — falling back to captions", exc)
+        return []
+
+    if not results:
+        return []
+
+    captions = _get_vs().captions_for([r["file_path"] for r in results])
+    docs: list[Document] = []
+    for r in results:
+        docs.append(
+            Document(
+                page_content=captions.get(r["file_path"], ""),
+                metadata={
+                    "file_path": r["file_path"],
+                    "file_name": r["file_name"],
+                    "modality": Modality.IMAGE.value,
+                    "clip_score": round(float(r["score"]), 4),
+                },
+            )
+        )
     return docs
 
 

@@ -442,6 +442,8 @@ homeintel/
 | `COLPALI_MODEL` | `vidore/colpali-v1.2` | ColPali model |
 | `CLIP_MODEL` | `openai/clip-vit-large-patch14` | CLIP model for visual photo search |
 | `CLIP_AUTO_INDEX` | `false` | Watcher auto-CLIP-indexes new/changed photos (run bulk backfill first) |
+| `CLIP_TEXT_SEARCH` | `true` | Image (text) queries use CLIP text→image search instead of caption matching |
+| `CLIP_TEXT_MIN_SCORE` | `0.2` | Min CLIP text→image similarity (sims cluster ~0.2–0.26; ranking matters most) |
 | `REDACT_SECRETS` | `true` | Redact passwords/keys/tokens at ingestion, context, and excerpts |
 | `DOCLING_VLM_ENABLED` | `false` | Docling VLM picture descriptions |
 

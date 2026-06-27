@@ -31,6 +31,7 @@ from qdrant_client.models import (
     FilterSelector,
     Fusion,
     FusionQuery,
+    MatchAny,
     MatchValue,
     MultiVectorComparator,
     MultiVectorConfig,
@@ -329,6 +330,36 @@ class VectorStore:
             return self._client.count(settings.qdrant_collection_name).count
         except Exception:
             return 0
+
+    def captions_for(self, file_paths: list[str]) -> dict[str, str]:
+        """
+        Return {file_path: first-chunk text} for the given paths.
+
+        Used to attach captions to CLIP text->image results for display — the
+        visual collection stores no caption, so we look it up from the main
+        collection's chunk_index 0.
+        """
+        if not file_paths:
+            return {}
+        out: dict[str, str] = {}
+        points, _ = self._client.scroll(
+            collection_name=settings.qdrant_collection_name,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(key="file_path", match=MatchAny(any=file_paths)),
+                    FieldCondition(key="chunk_index", match=MatchValue(value=0)),
+                ]
+            ),
+            with_payload=True,
+            with_vectors=False,
+            limit=len(file_paths),
+        )
+        for p in points:
+            payload = p.payload or {}
+            fp = payload.get("file_path")
+            if fp and fp not in out:
+                out[fp] = payload.get("page_content", "")
+        return out
 
     def indexed_file_paths(self) -> set[str]:
         """

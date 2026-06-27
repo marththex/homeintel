@@ -164,6 +164,20 @@ class Settings(BaseSettings):
                     "index_visual.py backfill first, then enable. Loads the CLIP "
                     "model (~500 MB-2 GB) in the backend process.",
     )
+    clip_text_search: bool = Field(
+        default=True,
+        description="Use CLIP text->image search for image (text) queries instead "
+                    "of caption keyword matching — far better visual relevance. "
+                    "Requires the homeintel_visual index. Falls back to caption "
+                    "search if it returns nothing.",
+    )
+    clip_text_min_score: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Minimum CLIP text->image cosine similarity to return a photo. "
+                    "CLIP text-image sims are low (~0.15-0.30); tune per your data.",
+    )
 
     # ── Security ──────────────────────────────────────────────────────────────
     redact_secrets: bool = Field(

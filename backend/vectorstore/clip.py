@@ -109,20 +109,33 @@ class CLIPVisualStore:
             feats = feats / feats.norm(dim=-1, keepdim=True)
         return feats.cpu().tolist()
 
+    def _embed_text(self, text: str) -> list[float]:
+        """Embed a text query into the shared CLIP space (for text->image search)."""
+        device = next(self._model.parameters()).device
+        inputs = self._processor(
+            text=[text], return_tensors="pt", padding=True, truncation=True
+        ).to(device)
+        with torch.no_grad():
+            out = self._model.get_text_features(**inputs)
+            feats = self._project(out)
+            feats = feats / feats.norm(dim=-1, keepdim=True)
+        return feats[0].cpu().tolist()
+
     def _project(self, out):
         """
-        Return the image-embedding tensor across transformers versions.
+        Return the projected embedding tensor across transformers versions.
 
         transformers <5 returned the projected embeds directly from
-        get_image_features. transformers 5.x returns a BaseModelOutputWithPooling
-        whose pooler_output is already the projected image embedding
-        (projection_dim, 768 for ViT-L/14).
+        get_image_features/get_text_features. transformers 5.x returns a
+        BaseModelOutputWithPooling whose pooler_output is already the projected
+        embedding (projection_dim, 768 for ViT-L/14).
         """
         if torch.is_tensor(out):
             return out
-        embeds = getattr(out, "image_embeds", None)
-        if embeds is not None:
-            return embeds
+        for attr in ("image_embeds", "text_embeds"):
+            v = getattr(out, attr, None)
+            if v is not None:
+                return v
         return out.pooler_output
 
     # ── Write ─────────────────────────────────────────────────────────────────
@@ -202,6 +215,38 @@ class CLIPVisualStore:
             limit=top_k,
             with_payload=True,
             score_threshold=_SCORE_THRESHOLD,
+        )
+        return [
+            {
+                "file_path": p.payload["file_path"],
+                "file_name": p.payload["file_name"],
+                "score": p.score,
+            }
+            for p in response.points
+        ]
+
+    def search_by_text(
+        self, query: str, top_k: int = 20, min_score: Optional[float] = None
+    ) -> list[dict]:
+        """
+        Text->image search: encode the query with CLIP and find the most
+        visually relevant photos. Far better than caption keyword matching for
+        visual concepts ('asian women', 'my dog', 'beach at sunset').
+
+        CLIP text-image cosine sims are low in absolute terms (~0.15-0.30), so
+        the threshold is separate from the image-image one (default
+        CLIP_TEXT_MIN_SCORE).
+        """
+        from config import settings as _s
+        threshold = _s.clip_text_min_score if min_score is None else min_score
+        vec = self._embed_text(query)
+        response = self._client.query_points(
+            collection_name=_collection_name(),
+            query=vec,
+            using=_VECTOR_NAME,
+            limit=top_k,
+            with_payload=True,
+            score_threshold=threshold,
         )
         return [
             {

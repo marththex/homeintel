@@ -490,6 +490,36 @@ singleton means search and the watcher load the CLIP model at most once per proc
 Order of operations that was followed: caption reindex → bulk `index_visual.py` →
 enable `CLIP_AUTO_INDEX=true`. `index_visual.py` is now a recovery/rebuild tool only.
 
+### ✅ Step 13 — CLIP Text→Image Search for Image Queries (COMPLETE)
+**Files modified:**
+- `backend/vectorstore/clip.py` — `_embed_text()`, `search_by_text()`, generalized `_project()`
+- `backend/vectorstore/qdrant.py` — `captions_for()` (batch caption lookup for display)
+- `backend/rag/retriever.py` — route image queries to `_retrieve_images_clip()`
+- `backend/config.py` — `clip_text_search`, `clip_text_min_score`
+- `frontend/src/components/PhotoCarousel.tsx` — render per-photo caption as markdown
+
+**Why:** image (text) queries used caption keyword matching, which is noisy for
+visual concepts — e.g. "asian women" surfaced a food photo whose caption said
+"East Asian cuisine". CLIP text→image search encodes the query into the same space
+as the photos and ranks by visual relevance. Verified: for "asian women" the food
+photo dropped out of the top 25 entirely; results are all people/wedding photos.
+
+**How it works:** for image queries (modality=image, `CLIP_TEXT_SEARCH=true`),
+`retrieve()` calls CLIP `search_by_text()` against `homeintel_visual`, then attaches
+each photo's caption via `VectorStore.captions_for()` (chunk_index 0 from the main
+collection) for the carousel + LLM summary. Bypasses reranking/dedup (CLIP results
+are already one-per-photo and ranked). Falls back to caption search if CLIP returns
+nothing.
+
+**Score-scale note:** CLIP text-image cosine sims cluster in a narrow band
+(~0.20–0.26 on this data) — the *ranking* is what's reliable, not the absolute value.
+`CLIP_TEXT_MIN_SCORE=0.2` drops the absolute tail; per-query top-K ranking does the
+rest. If results feel too loose/strict, tune `CLIP_TEXT_MIN_SCORE` — but expect small
+absolute differences to matter.
+
+Also fixed: the carousel's per-photo caption now renders markdown (was showing raw
+`**Objects**` etc.), matching the main answer bubble.
+
 ---
 
 ## Key Design Decisions & Rationale
