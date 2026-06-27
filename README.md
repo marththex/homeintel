@@ -189,6 +189,33 @@ Open **http://localhost:5173**.
 
 ---
 
+## Running the App
+
+Both services start automatically at Windows login via Task Scheduler. Access the UI at **http://localhost:5173**.
+
+**Manual start/stop:**
+```powershell
+Start-ScheduledTask "HomeIntel-API"
+Stop-ScheduledTask "HomeIntel-API"
+Start-ScheduledTask "HomeIntel-UI"
+Stop-ScheduledTask "HomeIntel-UI"
+```
+
+**Freeing GPU VRAM (~11.4 GB held during normal use):**
+```powershell
+# Stop backend (frees reranker + embeddings ~1.4 GB)
+Stop-ScheduledTask "HomeIntel-API"
+
+# Stop Ollama (frees qwen3:14b + nomic-embed-text ~10 GB)
+taskkill /IM "ollama app.exe" /F
+
+# Restart when needed
+Start-Process "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
+Start-ScheduledTask "HomeIntel-API"
+```
+
+---
+
 ## Development
 
 Run backend directly with hot-reload:
