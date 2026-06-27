@@ -33,6 +33,10 @@ faster-whisper==1.1.0                   # local speech-to-text (Step 8)
 # ── Video ─────────────────────────────────────────────────────────────────────
 opencv-python-headless==4.10.0.84       # frame extraction (headless = no GUI deps)
 
+# ── ColPali visual retrieval (Step 7 — install separately before running run_colpali.py) ──
+# colpali-engine>=0.3.0              # ColPali model wrapper (vidore/colpali-v1.2)
+# pypdfium2>=4.0.0                   # PDF → PIL page renderer (no poppler required)
+
 # ── File watching ─────────────────────────────────────────────────────────────
 watchdog==6.0.0
 

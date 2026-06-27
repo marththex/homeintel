@@ -92,13 +92,13 @@ def check_health() -> Result:
 
 
 def check_stats() -> Result:
-    name = "GET /stats → total_chunks > 0"
+    name = "GET /stats → total > 0"
     resp = httpx.get(f"{BASE_URL}/stats", timeout=10)
     body = resp.json()
-    total = body.get("total_chunks", 0)
+    total = body.get("total", 0)
     if resp.status_code == 200 and total > 0:
-        return Result(name, passed=True, detail=f"total_chunks={total}")
-    return Result(name, passed=False, detail=f"total_chunks={total} (run test_ingestion.py --keep-chunks first)")
+        return Result(name, passed=True, detail=f"total={total} {body}")
+    return Result(name, passed=False, detail=f"total={total} (run test_ingestion.py --keep-chunks first)")
 
 
 def check_chat_resume() -> Result:

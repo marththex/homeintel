@@ -121,6 +121,29 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1024, le=65535)
     log_level: str = Field(default="info")
 
+    # ── Image ingestion ───────────────────────────────────────────────────────
+    ollama_vision_model: str = Field(
+        default="",
+        description="Ollama model tag for image captioning (e.g. qwen2.5vl:7b). "
+                    "Empty string disables image ingestion.",
+    )
+
+    # ── Audio ingestion ───────────────────────────────────────────────────────
+    whisper_model_size: str = Field(
+        default="base",
+        description="faster-whisper model size: tiny|base|small|medium|large-v3.",
+    )
+
+    # ── ColPali visual retrieval ───────────────────────────────────────────────
+    colpali_enabled: bool = Field(
+        default=False,
+        description="Enable ColPali visual retrieval. Requires run_colpali.py batch indexer.",
+    )
+    colpali_model: str = Field(
+        default="vidore/colpali-v1.2",
+        description="HuggingFace model ID for ColPali page embeddings.",
+    )
+
     # ── Dev helpers ───────────────────────────────────────────────────────────
     skip_llm_health_check: bool = Field(
         default=False,

@@ -32,6 +32,8 @@ from qdrant_client.models import (
     Fusion,
     FusionQuery,
     MatchValue,
+    MultiVectorComparator,
+    MultiVectorConfig,
     Prefetch,
     SparseIndexParams,
     SparseVector,
@@ -44,9 +46,11 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-_DENSE_VECTOR  = "dense"
-_SPARSE_VECTOR = "sparse"
-_SPARSE_MODEL  = "Qdrant/bm25"
+_DENSE_VECTOR   = "dense"
+_SPARSE_VECTOR  = "sparse"
+_SPARSE_MODEL   = "Qdrant/bm25"
+_COLPALI_VECTOR = "colpali"
+_COLPALI_DIM    = 128   # patch embedding dim from vidore/colpali-v1.2
 
 
 # ── Modality enum ─────────────────────────────────────────────────────────────
@@ -327,7 +331,7 @@ class VectorStore:
             return 0
 
     def stats(self) -> dict[str, Any]:
-        """Per-modality chunk breakdown — same structure as old ChromaDB wrapper."""
+        """Per-modality chunk breakdown."""
         total = self.count()
         counts: dict[str, int] = {}
         for modality in Modality:
@@ -340,10 +344,8 @@ class VectorStore:
             counts[modality.value] = result.count
 
         return {
-            "total_chunks": total,
-            "by_modality": counts,
-            "collection": settings.qdrant_collection_name,
-            "qdrant_url": settings.qdrant_url,
+            **counts,           # "document": N, "image": N, "audio": N
+            "total": total,
         }
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -369,3 +371,65 @@ class VectorStore:
         payload = dict(point.payload)
         page_content = payload.pop("page_content", "")
         return Document(page_content=page_content, metadata=payload)
+
+    # ── ColPali collection ────────────────────────────────────────────────────
+
+    @property
+    def _colpali_collection(self) -> str:
+        return f"{settings.qdrant_collection_name}_colpali"
+
+    def ensure_colpali_collection(self) -> None:
+        """Create the ColPali sibling collection if it doesn't exist."""
+        existing = {c.name for c in self._client.get_collections().collections}
+        if self._colpali_collection in existing:
+            return
+
+        self._client.create_collection(
+            collection_name=self._colpali_collection,
+            vectors_config={
+                _COLPALI_VECTOR: VectorParams(
+                    size=_COLPALI_DIM,
+                    distance=Distance.COSINE,
+                    multivector_config=MultiVectorConfig(
+                        comparator=MultiVectorComparator.MAX_SIM,
+                    ),
+                )
+            },
+        )
+        logger.info("Created ColPali collection: %s", self._colpali_collection)
+
+    def upsert_colpali(self, points: list[PointStruct]) -> None:
+        """Upsert ColPali page embeddings into the sibling collection."""
+        self.ensure_colpali_collection()
+        self._client.upsert(
+            collection_name=self._colpali_collection,
+            points=points,
+        )
+        logger.info("Upserted %d ColPali page(s)", len(points))
+
+    def query_colpali(
+        self, query_vectors: list[list[float]], top_k: int
+    ) -> list[Document]:
+        """MaxSim search over ColPali page embeddings."""
+        response = self._client.query_points(
+            collection_name=self._colpali_collection,
+            query=query_vectors,
+            using=_COLPALI_VECTOR,
+            limit=top_k,
+            with_payload=True,
+        )
+        return [self._point_to_document(p) for p in response.points]
+
+    def delete_file_colpali(self, file_path: str) -> None:
+        """Remove ColPali page embeddings for a file."""
+        existing = {c.name for c in self._client.get_collections().collections}
+        if self._colpali_collection not in existing:
+            return
+        self._client.delete(
+            collection_name=self._colpali_collection,
+            points_selector=FilterSelector(
+                filter=Filter(
+                    must=[FieldCondition(key="file_path", match=MatchValue(value=file_path))]
+                )
+            ),
+        )

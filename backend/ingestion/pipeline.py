@@ -1,5 +1,8 @@
 """
-ingestion/pipeline.py — Orchestrate document ingestion end-to-end.
+ingestion/pipeline.py — Orchestrate file ingestion end-to-end.
+
+Routes files to the correct processor by extension, chunks the resulting
+text, generates embeddings, and upserts into Qdrant.
 
 Usage:
     from ingestion.pipeline import ingest_file
@@ -22,6 +25,8 @@ from ingestion.chunker import chunk_text
 logger = logging.getLogger(__name__)
 
 DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".yml", ".yaml", ".json"}
+IMAGE_EXTENSIONS    = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+AUDIO_EXTENSIONS    = {".mp3", ".wav", ".m4a", ".flac", ".ogg"}
 
 _vs: Optional[VectorStore] = None
 
@@ -40,7 +45,13 @@ def ingest_file(path: str) -> int:
     Parses the file, chunks the text, generates embeddings, and upserts
     into the vector store with full metadata.
 
-    Returns the number of chunks upserted (0 if file is empty or unsupported).
+    Routing by extension:
+      .pdf/.docx/.txt/.md/.yml/.yaml/.json → document processor (Docling / plain read)
+      .png/.jpg/.jpeg/.gif/.webp           → image processor (Ollama vision caption)
+      .mp3/.wav/.m4a/.flac/.ogg            → audio processor (faster-whisper)
+
+    Returns the number of chunks upserted (0 if file produces no text).
+    Raises ValueError for unsupported extensions (watcher logs and skips these).
     """
     p = Path(os.path.normpath(path))
 
@@ -49,19 +60,37 @@ def ingest_file(path: str) -> int:
 
     ext = p.suffix.lower()
 
-    if ext not in DOCUMENT_EXTENSIONS:
+    # ── Route to correct processor ────────────────────────────────────────────
+    if ext in DOCUMENT_EXTENSIONS:
+        text, title = parse_document(p)
+        modality = Modality.DOCUMENT
+
+    elif ext in IMAGE_EXTENSIONS:
+        from ingestion.processors.image import parse_image
+        text, title = parse_image(p)
+        modality = Modality.IMAGE
+
+    elif ext in AUDIO_EXTENSIONS:
+        from ingestion.processors.audio import transcribe
+        text, title = transcribe(p)
+        modality = Modality.AUDIO
+
+    else:
         raise ValueError(
-            f"Unsupported extension '{ext}' for document ingestion. "
-            f"Supported: {sorted(DOCUMENT_EXTENSIONS)}"
+            f"Unsupported extension '{ext}'. "
+            f"Supported: {sorted(DOCUMENT_EXTENSIONS | IMAGE_EXTENSIONS | AUDIO_EXTENSIONS)}"
         )
 
-    logger.info("Ingesting %s", p)
+    logger.info("Ingesting %s [%s]", p, modality.value)
 
-    text, title = parse_document(p)
-    chunks = chunk_text(text)
-
-    if not chunks:
+    # ── Chunk → embed → upsert ────────────────────────────────────────────────
+    if not text:
         logger.warning("No text extracted from %s — skipping", p.name)
+        return 0
+
+    chunks = chunk_text(text)
+    if not chunks:
+        logger.warning("Chunker produced 0 chunks for %s — skipping", p.name)
         return 0
 
     now = datetime.now(timezone.utc).isoformat()
@@ -73,7 +102,7 @@ def ingest_file(path: str) -> int:
             "file_name":   p.name,
             "file_ext":    ext,
             "chunk_index": i,
-            "modality":    Modality.DOCUMENT.value,
+            "modality":    modality.value,
             "created_at":  now,
         }
         if title:
