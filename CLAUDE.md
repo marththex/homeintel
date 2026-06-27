@@ -520,6 +520,44 @@ absolute differences to matter.
 Also fixed: the carousel's per-photo caption now renders markdown (was showing raw
 `**Objects**` etc.), matching the main answer bubble.
 
+### ✅ Step 14 — Streaming Responses + Full Image Captions (COMPLETE)
+**Files created/modified:**
+- `backend/rag/chain.py` — extracted `_prepare()`; added `run_stream()` generator
+- `backend/api/chat.py` — `build_sources()` + `_captions_for_images()`; new `POST /chat/stream` SSE endpoint
+- `backend/rag/retriever.py` — public `get_vectorstore()`
+- `backend/ingestion/pipeline.py` — stores `full_caption` on chunk 0 for images
+- `backend/vectorstore/qdrant.py` — `_join_caption_chunks()`; `captions_for()` returns the FULL caption
+- `frontend/src/api.ts` — `sendChatStream()` SSE reader
+- `frontend/src/App.tsx`, `components/ChatMessage.tsx`, `types.ts`, `App.css` — incremental rendering + caret
+- `scripts/test_caption_join.py`, `scripts/test_build_sources.py`, `scripts/test_run_stream.py`, `scripts/verify_streaming.py`
+
+**Streaming (`POST /chat/stream`, SSE):** `run_stream()` yields a `sources` event
+first (carousel paints immediately), then `token` deltas, then `done`. `POST /chat`
+is unchanged (still used by `verify_api.py`). The frontend reads the stream via
+`fetch` + `ReadableStream` (EventSource can't POST) and appends tokens live.
+Applies to both document Q&A and natural-language image queries (same LLM call);
+the camera-upload visual search has no LLM text and is unchanged. Redaction is
+unchanged — context is redacted before the LLM and excerpts before the `sources`
+event; streamed tokens pass through raw, exactly as `/chat` returns the answer.
+
+**Full captions:** captions longer than `CHUNK_SIZE` previously showed only
+chunk 0, then got capped to 200 chars in the API. Now the complete caption is
+stored as a `full_caption` payload field on chunk 0 at ingestion, and
+`captions_for()` prefers it (falling back to an overlap-stripped join of all
+chunks for photos indexed before this field existed). `build_sources()` gives
+image sources the full caption; other modalities keep a 200-char excerpt.
+
+**Re-index requirement:** photos indexed before this step have no `full_caption`
+field — display still works via the fallback join, but to store it exactly,
+re-run the caption reindex over the photos:
+```bash
+conda activate homeintel
+cd backend
+# Temporarily remove Z:/marcus_photoprism from WATCHER_EXCLUDE_PATHS in .env first
+python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .jpeg .png
+# Restore WATCHER_EXCLUDE_PATHS after
+```
+
 ---
 
 ## Key Design Decisions & Rationale
