@@ -2,8 +2,10 @@
 api/chat.py — POST /chat endpoint and shared source shaping.
 """
 
+import json
 import logging
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_core.documents import Document
 
 from config import settings
@@ -83,4 +85,46 @@ async def chat(request: ChatRequest) -> ChatResponse:
         sources=sources,
         model=settings.ollama_llm_model,
         chunks_used=len(docs),
+    )
+
+
+def _sse(event: str, data) -> str:
+    """Format one Server-Sent Events frame."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming variant of /chat. Emits SSE frames: a `sources` frame first
+    (so the UI can render the carousel immediately), then `token` deltas, then
+    `done`. Errors mid-stream are sent as an `error` frame.
+    """
+    chain = get_chain()
+
+    def gen():
+        try:
+            for tag, payload in chain.run_stream(
+                request.question, request.modality_filter, request.top_k
+            ):
+                if tag == "sources":
+                    docs = payload
+                    sources = build_sources(docs, _captions_for_images(docs))
+                    yield _sse("sources", {
+                        "sources": [s.model_dump() for s in sources],
+                        "model": settings.ollama_llm_model,
+                        "chunks_used": len(docs),
+                    })
+                elif tag == "token":
+                    yield _sse("token", {"delta": payload})
+                elif tag == "done":
+                    yield _sse("done", {"model": settings.ollama_llm_model})
+        except Exception as exc:
+            logger.exception("Streaming chat failed for: %r", request.question)
+            yield _sse("error", {"detail": str(exc)})
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
