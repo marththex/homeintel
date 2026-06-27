@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 interface Props {
@@ -10,14 +10,12 @@ export function CollapsibleCaption({ caption }: Props) {
   const [overflowing, setOverflowing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Show the toggle only when the 2-line clamp actually hides content.
-  // Measured against the rendered (clamped) box; re-measured on resize.
-  useEffect(() => {
+  // Measure the CLAMPED box synchronously after commit so the toggle shows
+  // only when content overflows — and survives an expand -> collapse cycle.
+  useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    const measure = () => {
-      if (!expanded) setOverflowing(el.scrollHeight > el.clientHeight + 1);
-    };
+    if (!el || expanded) return;
+    const measure = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
@@ -31,7 +29,7 @@ export function CollapsibleCaption({ caption }: Props) {
         <ReactMarkdown>{caption}</ReactMarkdown>
       </div>
       {(overflowing || expanded) && (
-        <button className="cap-toggle" onClick={() => setExpanded((v) => !v)}>
+        <button type="button" className="cap-toggle" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Show less" : "Show more"}
         </button>
       )}

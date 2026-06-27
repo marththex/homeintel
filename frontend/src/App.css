@@ -636,6 +636,7 @@ body {
   cursor: default;
 }
 
+/* absolute within the position:fixed .lightbox; overlays the bottom of the photo track */
 .lightbox-caption {
   position: absolute;
   left: 0;
@@ -649,3 +650,4 @@ body {
   animation: slide-up 0.2s ease;
 }
 .lightbox-caption .cap-clamp { color: #fff; }
+.lightbox-caption .cap-toggle { color: rgba(255, 255, 255, 0.85); }

@@ -48,12 +48,13 @@ export function Lightbox({ photos, startIndex, onClose }: Props) {
   return createPortal(
     <div className="lightbox" onClick={onClose}>
       <div className="lightbox-bar" onClick={(e) => e.stopPropagation()}>
-        <button className="lightbox-btn" onClick={onClose} aria-label="Close">
+        <button type="button" className="lightbox-btn" onClick={onClose} aria-label="Close">
           <CloseIcon size={22} />
         </button>
         <span className="lightbox-counter">{active + 1} / {photos.length}</span>
         {hasCaption ? (
           <button
+            type="button"
             className={`lightbox-btn ${showCaption ? "active" : ""}`}
             onClick={() => setShowCaption((v) => !v)}
             aria-label="Toggle description"
