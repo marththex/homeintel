@@ -113,11 +113,16 @@ export default function App() {
           ref={inputRef}
           className="chat-input"
           rows={1}
-          placeholder="Ask about your files… (Enter to send, Shift+Enter for newline)"
+          placeholder="Ask about your files…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={() => setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 300)}
           disabled={loading}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="sentences"
+          spellCheck={false}
         />
         <button className="send-btn" onClick={submit} disabled={loading || !input.trim()}>
           {loading ? "…" : "Send"}
