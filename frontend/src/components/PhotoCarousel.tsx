@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { fileUrl } from "../api";
 import { CollapsibleCaption } from "./CollapsibleCaption";
+import { Lightbox } from "./Lightbox";
 
 export interface CarouselPhoto {
   filePath: string;
@@ -19,6 +20,7 @@ const PAGE = 10;
 export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
   const [visible, setVisible] = useState(Math.min(initialCount, photos.length));
   const [active, setActive] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
   if (photos.length === 0) return null;
@@ -42,13 +44,14 @@ export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
   return (
     <div className="carousel">
       <div className="carousel-track" ref={trackRef} onScroll={onScroll}>
-        {shown.map((p) => (
+        {shown.map((p, i) => (
           <div className="carousel-slide" key={p.filePath}>
             <img
               src={fileUrl(p.filePath)}
               alt={p.fileName}
               className="carousel-img"
               loading="lazy"
+              onClick={() => setLightboxIndex(i)}
             />
             <div className="carousel-caption">
               <span className="carousel-name">{p.fileName}</span>
@@ -90,6 +93,14 @@ export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
           </button>
         )}
       </div>
+
+      {lightboxIndex !== null && (
+        <Lightbox
+          photos={shown}
+          startIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
     </div>
   );
 }

@@ -55,3 +55,10 @@ export const CloseIcon = ({ size = 18, className }: IconProps) => (
 export const FilterIcon = ({ size = 20, className }: IconProps) => (
   <svg {...base(size, className)}><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" /></svg>
 );
+
+export const InfoIcon = ({ size = 22, className }: IconProps) => (
+  <svg {...base(size, className)}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 16v-4M12 8h.01" />
+  </svg>
+);
