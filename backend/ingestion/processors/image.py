@@ -9,12 +9,16 @@ embedding pipeline (nomic-embed-text + BM25), storing as modality=image.
 """
 
 import base64
+import io
 import logging
 from pathlib import Path
 
 import httpx
+from PIL import Image
 
 from config import settings
+
+_MAX_PIXELS = 1024  # resize longest edge to this before encoding
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +42,13 @@ def parse_image(path: Path) -> tuple[str, str]:
             "Set it to a vision-capable Ollama model (e.g. qwen2.5vl:7b)."
         )
 
-    with open(path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode()
+    # Resize to fit context window — iPhone photos are 12MP+ which exceed 4096 tokens
+    img = Image.open(path).convert("RGB")
+    if max(img.size) > _MAX_PIXELS:
+        img.thumbnail((_MAX_PIXELS, _MAX_PIXELS), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    image_b64 = base64.b64encode(buf.getvalue()).decode()
 
     logger.debug("Captioning %s with %s", path.name, settings.ollama_vision_model)
 
