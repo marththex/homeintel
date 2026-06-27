@@ -340,7 +340,12 @@ homeintel/
 | `.mp3`, `.wav`, `.m4a`, `.flac`, `.ogg` | Faster-Whisper transcript → chunks → embeddings |
 | PDFs (visual, batch) | ColPali page multi-vectors → `homeintel_colpali` collection |
 
-**Excluded by default:** media files (movies/TV), ROM files, raw footage, Qdrant storage, Docker overlay2.
+**Excluded by default:** media files (movies/TV), ROM files, raw footage, Qdrant storage, Docker overlay2, Music library (Whisper too slow), web project node_modules, service data dirs (Vaultwarden, MariaDB, Nextcloud app code).
+
+**Photos (PhotoPrism):** indexed separately targeting only image files to skip YAML sidecars:
+```bash
+python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .jpeg .png
+```
 
 ---
 
@@ -364,6 +369,7 @@ homeintel/
 - [x] Step 7 — ColPali visual retrieval (batch PDF indexer, MaxSim Qdrant search)
 - [x] Step 8 — Image & audio processors (vision caption + Whisper transcription)
 - [x] Full reindex script (bulk ingest existing NAS contents)
+- [x] Windows auto-start (Task Scheduler — backend + frontend start at login)
 - [ ] CI/CD pipeline
 
 ---

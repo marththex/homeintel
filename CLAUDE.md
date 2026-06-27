@@ -138,13 +138,27 @@ Notable directories on the NAS:
 ├── homeintel/          ← HomeIntel data (qdrant_storage/, etc.)
 ├── docker/             ← Docker compose files for NAS services
 ├── homeassistant/      ← Home Assistant config
-├── nextcloud/          ← Nextcloud data
+├── nextcloud/          ← EXCLUDED (app code — thousands of l10n JSON files)
 ├── nginx/              ← Nginx config
 ├── cloudflared/        ← Cloudflare tunnel config
-├── Wedding_Contracts/  ← PDF documents
+├── Wedding_Contracts/  ← PDF documents (text + ColPali indexed)
 ├── Marcus_Resume.pdf   ← PDF at root
+├── 2fact/              ← Text notes + Bitwarden export
+├── homepage/           ← Homepage dashboard config
+├── marcus_photoprism/  ← originals/ indexed for images (via --path); database/ + storage/ excluded
+│   ├── originals/      ← 522 personal photos — captioned via qwen2.5vl:7b
+│   ├── database/       ← EXCLUDED (PhotoPrism DB)
+│   └── storage/        ← EXCLUDED (PhotoPrism thumbnails/cache)
 ├── Music/              ← EXCLUDED (audio — Whisper too slow for full library)
-├── marcus_photoprism/  ← EXCLUDED (PhotoPrism service dir — photos + YAML sidecars, not user docs)
+├── vw-data/            ← EXCLUDED (Vaultwarden DB + RSA keys — sensitive)
+├── mariadb/            ← EXCLUDED (MariaDB binary data)
+├── certs/              ← EXCLUDED (SSL private keys — sensitive)
+├── tailscale/          ← EXCLUDED (Tailscale state)
+├── portainer_data/     ← indexed (docker-compose files in compose/ subfolder)
+├── keribakes/          ← EXCLUDED (web project with node_modules)
+├── my-portfolio/       ← EXCLUDED (web project)
+├── react_projects/     ← EXCLUDED (web projects)
+├── portfolio/          ← EXCLUDED (web project)
 ├── media/              ← EXCLUDED (movies/TV - too large to index)
 ├── roms/               ← EXCLUDED (game ROMs)
 ├── plex_config/        ← EXCLUDED (Plex binary data)
@@ -154,14 +168,22 @@ Notable directories on the NAS:
 └── qbittorrent/        ← EXCLUDED (torrent client data)
 ```
 
-Video files (.mp4, .mov) are intentionally excluded from indexing — the NAS has
-52 movies, 15 TV shows, and a large One Pace collection that would take too long
-to transcribe.
+Video files (.mp4, .mov) are intentionally excluded — the NAS has 52 movies,
+15 TV shows, and a large One Pace collection that would take days to transcribe.
 
 Audio files (.mp3, .wav) are excluded from `SUPPORTED_EXTENSIONS` — the Music
 library is too large to transcribe in a reasonable time with Faster-Whisper. Can
 be re-enabled by adding `.mp3,.wav` back to `SUPPORTED_EXTENSIONS` and removing
 `Z:/Music` from `WATCHER_EXCLUDE_PATHS`, then running `reindex.py` overnight.
+
+**Photos (marcus_photoprism/originals):** indexed separately with `--path` and
+`--ext` flags to avoid YAML sidecars. Run with:
+```bash
+python ../scripts/reindex.py --path Z:/marcus_photoprism/originals --ext .jpg .jpeg .png
+```
+Temporarily remove `Z:/marcus_photoprism` from `WATCHER_EXCLUDE_PATHS` before
+running, then restore it after. The watcher excludes the whole photoprism dir
+to avoid watching PhotoPrism's database/storage churn.
 
 ---
 
@@ -370,6 +392,30 @@ with Faster-Whisper even on RTX 5080. Can be added later as a separate phase.
 pydantic-settings v2 tries to JSON-parse `List[str]` fields before validators run,
 causing `JSONDecodeError`. Workaround: store as `str`, expose as list via
 `@property`.
+
+---
+
+## Auto-start (Windows Task Scheduler)
+
+Both services are registered as Windows scheduled tasks that start at login:
+
+```powershell
+# Start / stop
+Start-ScheduledTask "HomeIntel-API"
+Stop-ScheduledTask "HomeIntel-API"
+Start-ScheduledTask "HomeIntel-UI"
+Stop-ScheduledTask "HomeIntel-UI"
+
+# View logs
+Get-Content "C:\Users\admin\Documents\homeintel\logs\api.log" -Wait
+
+# Re-register (run as admin if tasks need to be recreated)
+# See scripts/start_backend.bat and scripts/start_frontend.bat
+```
+
+The backend script (`start_backend.bat`) maps `Z:` via `net use` before starting
+uvicorn — needed because Task Scheduler runs in session 0 where user-mapped SMB
+drives are not visible.
 
 ---
 

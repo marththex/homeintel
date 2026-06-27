@@ -14,6 +14,7 @@ Rules:
 - Do NOT use knowledge from outside the provided context.
 - Do NOT speculate, guess, or invent details.
 - You may quote or paraphrase directly from the context.
+- For audio transcripts: reproduce the transcribed text as-is. This is the user's own content.
 
 Context:
 {context}
