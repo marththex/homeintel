@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import { fileUrl } from "../api";
+import { CollapsibleCaption } from "./CollapsibleCaption";
 
 export interface CarouselPhoto {
   filePath: string;
@@ -59,9 +59,7 @@ export function PhotoCarousel({ photos, initialCount = PAGE }: Props) {
       </div>
 
       {shown[active]?.caption && (
-        <div className="carousel-active-caption markdown">
-          <ReactMarkdown>{shown[active].caption}</ReactMarkdown>
-        </div>
+        <CollapsibleCaption key={active} caption={shown[active].caption!} />
       )}
 
       <div className="carousel-footer">

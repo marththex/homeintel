@@ -265,11 +265,33 @@ body {
   flex-shrink: 0;
 }
 
-.carousel-active-caption {
-  margin-top: 8px;
+.cap { margin-top: 8px; }
+.cap-clamp {
   font-size: 0.85rem;
   line-height: 1.45;
   color: var(--text);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cap-clamp.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.cap-clamp p { margin: 0; }
+.cap-clamp.expanded p { margin: 0 0 8px; }
+.cap-toggle {
+  margin-top: 4px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .carousel-footer {
