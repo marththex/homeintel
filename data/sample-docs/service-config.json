@@ -1,0 +1,19 @@
+{
+  "service_name": "home-automation-hub",
+  "version": "1.4.2",
+  "network": {
+    "host": "0.0.0.0",
+    "port": 8123,
+    "protocol": "http"
+  },
+  "features": {
+    "enable_notifications": true,
+    "enable_voice_control": false,
+    "timezone": "UTC"
+  },
+  "integrations": [
+    { "name": "weather", "enabled": true },
+    { "name": "calendar", "enabled": true },
+    { "name": "photo-app", "enabled": true, "port": 2342 }
+  ]
+}

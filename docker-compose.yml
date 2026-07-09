@@ -1,0 +1,58 @@
+version: "3.9"
+
+# ── HomeIntel — Docker Compose (PC services) ──────────────────────────────────
+#
+# Before starting:
+#   1. cp .env.example .env  and fill in NAS_WATCH_PATH, QDRANT_URL
+#   2. docker compose up -d
+#
+# Ollama runs as a Windows process on the host — NOT in Docker.
+# The API connects to it via host.docker.internal:11434.
+# Qdrant runs on the NAS — see docker/qdrant.yml for the NAS-side service.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI backend ─────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: homeintel-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override Ollama URL — from inside Docker, host Ollama is reachable here
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # The host folder (any path, relative resolved against this file) is
+      # mounted read-only at /data/files inside the container; force
+      # NAS_WATCH_PATH to that mount point so the container-side value is
+      # always a valid absolute path regardless of the host-side .env value.
+      - NAS_WATCH_PATH=/data/files
+    volumes:
+      # SMB-mounted NAS drive (or the sample-docs default) — passed through as
+      # a bind mount (read-only). Host side may be relative; container side is
+      # a fixed absolute path (see NAS_WATCH_PATH override above).
+      - ${NAS_WATCH_PATH:-./data/sample-docs}:/data/files:ro
+    ports:
+      - "${API_PORT:-8000}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ── React frontend ──────────────────────────────────────────────────────────
+  ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: homeintel-ui
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:80"

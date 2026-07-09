@@ -1,0 +1,41 @@
+# sample-compose.yml — synthetic docker-compose file for HomeIntel's sample
+# document set. Fictional services only; no real hosts, images, or secrets.
+
+version: "3.9"
+
+services:
+  photos:
+    image: example/photo-app:latest
+    container_name: photos
+    restart: unless-stopped
+    ports:
+      - "2342:2342"
+    volumes:
+      - ./photos/originals:/photo-app/originals
+      - ./photos/storage:/photo-app/storage
+    environment:
+      PHOTOAPP_ADMIN_USER: admin
+      PHOTOAPP_DATABASE_DRIVER: sqlite
+
+  reverse-proxy:
+    image: nginx:latest
+    container_name: reverse-proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - photos
+
+  database:
+    image: postgres:16
+    container_name: database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+    volumes:
+      - ./database/data:/var/lib/postgresql/data

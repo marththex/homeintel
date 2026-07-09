@@ -1,0 +1,97 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# HomeIntel CI
+#
+# Three independent jobs:
+#   - backend-tests : pure-unit pytest suite (backend/tests/), cross-OS matrix.
+#                      Installs ONLY backend/requirements-dev.txt — deliberately
+#                      does NOT install backend/requirements.txt (torch/docling/
+#                      faster-whisper/qdrant-client/...), which is slow, heavy,
+#                      and unnecessary since the unit suite never imports those
+#                      modules (see backend/tests/__init__.py + pytest.ini).
+#   - frontend-build : Vite/TS build (`npm ci && npm run build`).
+#   - lint            : ruff over backend/, advisory only (continue-on-error) so
+#                       a freshly-cloned repo doesn't start out red on
+#                       pre-existing style issues. Flip continue-on-error to
+#                       false once the codebase is ruff-clean and contributors
+#                       want it enforced.
+# ─────────────────────────────────────────────────────────────────────────────
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # Pure-unit backend tests on all three major OSes — proves the core logic
+  # (config parsing, secret redaction, etc.) is genuinely cross-platform, not
+  # just "works on the maintainer's machine".
+  backend-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements-dev.txt
+
+      # NOTE: intentionally NOT `pip install -r backend/requirements.txt` —
+      # that pulls torch/docling/faster-whisper and is unneeded for the pure
+      # unit suite (see header comment above).
+      - name: Install dev/test dependencies
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Run unit tests
+        run: python -m pytest backend/tests -q
+
+  # Frontend production build (Vite + tsc). Uses the committed package-lock.json
+  # via `npm ci` for a reproducible install.
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  # Advisory lint pass. `continue-on-error: true` means ruff findings show up
+  # in the job log/annotations but never fail the overall workflow — this keeps
+  # a fresh clone/fork green even before a style pass has been done. Once the
+  # codebase is ruff-clean, remove `continue-on-error` (or set it to `false`)
+  # to make linting a hard gate.
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install ruff
+        run: pip install -r backend/requirements-dev.txt
+
+      - name: Ruff check (advisory — non-blocking)
+        run: ruff check backend

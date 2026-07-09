@@ -1,0 +1,50 @@
+version: "3.9"
+
+# ── HomeIntel — Dev overrides ─────────────────────────────────────────────────
+#
+# Use this on top of docker-compose.yml during development:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Changes from prod:
+#   - Backend mounts source code live (hot-reload via uvicorn --reload)
+#   - Frontend runs Vite dev server instead of nginx
+#   - SKIP_LLM_HEALTH_CHECK lets the API start even if Ollama isn't ready yet
+#   - Log level bumped to debug
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  api:
+    build:
+      context: ./backend
+      target: dev                         # multi-stage Dockerfile dev target
+    volumes:
+      - ./backend:/app                    # live source mount
+      # Host folder (any path, relative resolved against this file) is
+      # mounted read-only at /data/files inside the container, same as
+      # docker-compose.yml.
+      - ${NAS_WATCH_PATH:-./data/sample-docs}:/data/files:ro
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - LOG_LEVEL=debug
+      - SKIP_LLM_HEALTH_CHECK=false
+      # Ollama always runs on the host (never in Docker) — reach it the same
+      # way docker-compose.yml does.
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Force NAS_WATCH_PATH to the container-side mount point (see volumes
+      # above). Redundant with docker-compose.yml's base environment entry
+      # once merged, but kept here for explicitness since this file also
+      # documents the /data/files mount.
+      - NAS_WATCH_PATH=/data/files
+
+  ui:
+    build:
+      context: ./frontend
+      target: dev
+    volumes:
+      - ./frontend/src:/app/src           # live source mount
+    command: npm run dev -- --host
+    ports:
+      - "5173:5173"                       # Vite default port
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000

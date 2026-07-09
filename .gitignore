@@ -1,0 +1,57 @@
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.local.bak
+
+# ── Personal AI-context file (generalized CLAUDE.md is tracked; this isn't) ──
+CLAUDE.local.md
+
+# ── Internal refactor working docs (contain the pre-scrub personal inventory) ──
+REFACTOR_PLAN.md
+PRIVACY_SWEEP.md
+
+# ── Machine-local launcher wrappers (see docs/deployment-windows.md) ──────────
+scripts/start_*.bat
+scripts/start_*.ps1
+
+# ── Data (lives on NAS, never in git — except bundled sample docs) ──────────
+data/*
+!data/sample-docs/
+!data/sample-docs/**
+*.db
+*.sqlite
+
+# ── Local caches ──────────────────────────────────────────────────────────────
+backend/.cache/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node ──────────────────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Frontend local env ────────────────────────────────────────────────────────
+frontend/.env.local
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,17 @@
+Home Network Notes
+===================
+
+- Router admin page: http://192.0.2.1 (example address, not a real device)
+- The guest wifi password lives in the household password manager, not here.
+- Trash pickup is every Tuesday morning; recycling is every other Tuesday.
+- Furnace filter size: 16x25x1 — replace every 3 months, last replaced in March.
+- The porch light's smart plug is named "porch-light-01" on the home
+  automation hub.
+- Nightly incremental backup runs at 2:00 AM to the home server.
+- Remember to renew the domain name in September.
+
+Shopping list (recurring)
+--------------------------
+- Coffee filters
+- AA batteries for the remotes
+- Dish soap

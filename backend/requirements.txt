@@ -1,0 +1,66 @@
+# ── Web framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# ── Config ────────────────────────────────────────────────────────────────────
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# ── LangChain core ────────────────────────────────────────────────────────────
+langchain==0.3.13
+langchain-community==0.3.13
+langchain-ollama==0.2.2
+
+# ── Vector store ──────────────────────────────────────────────────────────────
+qdrant-client[fastembed]>=1.9.0         # Qdrant client + fastembed for sparse BM25
+
+# ── Document ingestion ────────────────────────────────────────────────────────
+docling>=2.0.0                          # PDF + DOCX parsing, replaces Unstructured
+# NOTE: >=5.0.0 is unusually high for this ecosystem at time of writing — pinned
+# this way to satisfy docling's layout model + CLIP (openai/clip-vit-large-patch14).
+# If install resolution fails on your platform, try transformers>=4.40,<5 first.
+transformers>=5.0.0                     # docling layout model + CLIP visual similarity (openai/clip-vit-large-patch14)
+
+# ── Retrieval / reranking ─────────────────────────────────────────────────────
+sentence-transformers>=3.0.0            # CrossEncoder for bge-reranker-v2-m3
+
+# ── Image processing ──────────────────────────────────────────────────────────
+Pillow>=11.0.0
+
+# torch/torchvision: install these FIRST via setup.sh / setup.ps1 (CPU build by
+# default, or the platform's `--gpu` flag for a CUDA cu128 build) BEFORE
+# installing this file. They are intentionally left as a loose floor (not
+# pinned) here so `pip install -r requirements.txt` does NOT clobber whichever
+# platform-specific build you already installed — a strict pin would make pip
+# "helpfully" reinstall a generic (often CPU-only) wheel over your GPU build.
+torch>=2.2
+torchvision
+
+# ── Audio / Speech ────────────────────────────────────────────────────────────
+faster-whisper==1.1.0                   # local speech-to-text (Step 8)
+
+# ── Video ─────────────────────────────────────────────────────────────────────
+opencv-python-headless==4.10.0.84       # frame extraction (headless = no GUI deps)
+
+# ── ColPali visual retrieval (Step 7) — OPTIONAL, opt-in ─────────────────────
+# Disabled by default (COLPALI_ENABLED=false in .env). Uncomment to enable.
+#
+# WARNING: installing colpali-engine pulls in its own (CPU-only) torch
+# dependency and WILL OVERWRITE a CUDA torch/torchvision install. If you
+# enable this, reinstall the CUDA build afterward:
+#   pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# Verify with: python -c "import torch; print(torch.cuda.is_available())"  # must print True
+#
+# colpali-engine>=0.3.0              # ColPali model wrapper (vidore/colpali-v1.2)
+# pypdfium2>=4.0.0                   # PDF → PIL page renderer (no poppler required)
+
+# ── File watching ─────────────────────────────────────────────────────────────
+watchdog==6.0.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-multipart==0.0.18                # FastAPI file uploads
+httpx==0.28.0                           # async HTTP (Ollama health checks)
+tenacity==9.0.0                         # retry logic for Ollama calls
+structlog==24.4.0                       # structured JSON logging
+python-dotenv==1.0.1                    # load .env in non-Docker contexts
+pyyaml>=6.0                             # YAML parsing in document processor
