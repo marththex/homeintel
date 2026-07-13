@@ -39,7 +39,7 @@ doing something similar (e.g. indexing a NAS from a separate PC):
 |---|---|---|
 | App host | Any OS | Runs Ollama + FastAPI + React (can also be split across machines) |
 | Source files | NAS or local disk | Mounted over SMB/NFS, or just a local folder |
-| LLM | App host (GPU) | e.g. `qwen3:14b` via Ollama at `http://localhost:11434` |
+| LLM | App host (GPU) | e.g. `qwen3.5:9b` via Ollama at `http://localhost:11434` |
 | Embeddings | App host (GPU) | `nomic-embed-text` via Ollama |
 | Vector store | Anywhere on the LAN | Qdrant (Docker) — can co-locate with the app or run on a separate host/NAS |
 | Watched path | `NAS_WATCH_PATH` | Any local folder, or a mounted network share |
@@ -98,7 +98,7 @@ QDRANT_COLLECTION_NAME=homeintel
 QDRANT_API_KEY=
 EMBED_DIM=768
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_LLM_MODEL=qwen3:14b            # ~10 GB VRAM — see below for smaller-GPU guidance
+OLLAMA_LLM_MODEL=qwen3.5:9b           # ~7 GB VRAM — see below for smaller-GPU guidance
 OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_VISION_MODEL=                  # set to e.g. qwen2.5vl:7b to enable image captioning
 WHISPER_MODEL_SIZE=base
@@ -122,10 +122,10 @@ SKIP_LLM_HEALTH_CHECK=false
 
 | Model | VRAM |
 |---|---|
-| qwen3:14b (Q4_K_M) | ~9–10 GB |
+| qwen3.5:9b (Q4_K_M) | ~6.5–7 GB |
 | nomic-embed-text | ~270 MB |
 | bge-reranker-v2-m3 | ~1.1 GB |
-| **Headroom** | **~5 GB** |
+| **Headroom** | **~8 GB** |
 
 ColPali (~8 GB) is a separate batch job — never loaded concurrently with
 inference. The vision model (`qwen2.5vl:7b`, ~5 GB) is only active during
@@ -135,9 +135,12 @@ watcher ingestion of images.
 (~7–8B, e.g. `qwen2.5:7b` or `llama3.1:8b`) in `.env` — see README for details.
 CPU-only inference works but generation is noticeably slower.
 
-**LLM choice rationale:** `qwen3:14b` is the default over smaller ~9B models for
-better multi-step reasoning quality in RAG Q&A; both fit in 16 GB with embeddings
-+ reranker. A ~32B-class model needs ~19 GB at Q4_K_M and won't fit in 16 GB.
+**LLM choice rationale:** `qwen3.5:9b` is the default for its lower VRAM
+footprint (~7 GB vs. ~10 GB) and faster generation while still holding up well
+on RAG Q&A. `qwen3:14b` remains available via `OLLAMA_LLM_MODEL` when heavier
+multi-step reasoning matters more than latency — both fit in 16 GB with
+embeddings + reranker. A ~32B-class model needs ~19 GB at Q4_K_M and won't fit
+in 16 GB.
 
 **Important quirk:** `SUPPORTED_EXTENSIONS`, `WATCHER_EXCLUDE_PATHS`, and
 `CORS_ALLOW_ORIGINS` are plain comma-separated strings (NOT JSON arrays)
@@ -380,11 +383,11 @@ verified working (embedded mode, embeddings, upsert/query/delete). It has been
 **VRAM budget with CLIP:**
 | Model | VRAM |
 |---|---|
-| qwen3:14b (Q4_K_M) | ~9–10 GB |
+| qwen3.5:9b (Q4_K_M) | ~6.5–7 GB |
 | nomic-embed-text | ~270 MB |
 | bge-reranker-v2-m3 | ~1.1 GB |
 | CLIP large (lazy-loaded on first /visual-search) | ~500 MB |
-| **Headroom** | **~4.5 GB** |
+| **Headroom** | **~7.5 GB** |
 
 **Running the CLIP indexer:**
 ```bash
@@ -691,11 +694,14 @@ needed.
 Speed. nomic-embed-text is a dedicated embedding model — much faster than using
 the chat LLM for embeddings. Frees the LLM for generation only.
 
-**Why qwen3:14b as the default LLM?**
-Better multi-step reasoning for RAG Q&A than smaller ~9B-class models; both fit
-in 16 GB VRAM alongside nomic + reranker (~10.5 GB combined). A ~32B-class model
-needs ~19 GB and does not fit. On a smaller GPU, switch to a ~7–8B model via
-`OLLAMA_LLM_MODEL` if response latency/VRAM is a problem.
+**Why qwen3.5:9b as the default LLM?**
+Lower VRAM footprint (~7 GB vs. ~10 GB for qwen3:14b) and faster generation,
+while still holding up well on RAG Q&A. Fits in 16 GB VRAM alongside nomic +
+reranker with ~8 GB of headroom to spare. `qwen3:14b` remains available via
+`OLLAMA_LLM_MODEL` when heavier multi-step reasoning matters more than latency.
+A ~32B-class model needs ~19 GB and does not fit. On a smaller GPU, switch to
+a smaller ~7–8B model via `OLLAMA_LLM_MODEL` if response latency/VRAM is still
+a problem.
 
 **Why SMB (or NFS) as an optional NAS-mount path, not a hard dependency?**
 Some platforms have quirks mounting NFS (e.g. Windows is missing `mount.exe` in
@@ -764,7 +770,7 @@ ollama serve
 ollama list
 
 # Pull models
-ollama pull qwen3:14b
+ollama pull qwen3.5:9b
 ollama pull nomic-embed-text
 # Optional vision model for image captioning:
 # ollama pull qwen2.5vl:7b

@@ -6,7 +6,7 @@
 - **Frontend:** Vite + React 19 + TypeScript (strict). No state library — all state lives in `App.tsx`.
   Styling is one plain-CSS file (`src/App.css`) with CSS variables (dark theme only), mobile-first,
   additive `min-width` breakpoints: md 768 / lg 1024 / xl 1440. Only runtime dep of note: `react-markdown`.
-- **Backend:** FastAPI (`backend/main.py`) + LangChain RAG chain → Ollama (qwen3:14b) + Qdrant (hybrid dense+sparse,
+- **Backend:** FastAPI (`backend/main.py`) + LangChain RAG chain → Ollama (qwen3.5:9b) + Qdrant (hybrid dense+sparse,
   reranked). Serves built frontend from `frontend/dist` at `/` when present (same-origin).
 
 ## Frontend component tree

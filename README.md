@@ -88,7 +88,7 @@ results, mobile-first composer (camera/library upload, filter + result-count she
 
 | Layer | Technology |
 |---|---|
-| LLM | [Qwen3](https://ollama.com/library/qwen3) (default: `qwen3:14b`) via [Ollama](https://ollama.com) |
+| LLM | [Qwen3.5](https://ollama.com/library/qwen3.5) (default: `qwen3.5:9b`) via [Ollama](https://ollama.com) |
 | Embeddings | [nomic-embed-text](https://ollama.com/library/nomic-embed-text) via Ollama |
 | Sparse index | BM25 via [fastembed](https://github.com/qdrant/fastembed) |
 | Reranker | [bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3) (CrossEncoder) |
@@ -163,17 +163,17 @@ anywhere reachable over the network.
 ### 4. Pull the Ollama models
 
 ```bash
-ollama pull qwen3:14b
+ollama pull qwen3.5:9b
 ollama pull nomic-embed-text
 
 # Optional — enables image captioning:
 ollama pull qwen2.5vl:7b
 ```
 
-> **Smaller GPU or CPU-only?** `qwen3:14b` needs roughly 10 GB of VRAM. If that
-> doesn't fit your machine, pull a smaller chat model instead (e.g. a 7–8B model
-> such as `qwen2.5:7b` or `llama3.1:8b`) and set `OLLAMA_LLM_MODEL` in `.env` to
-> match. CPU-only inference works too, just slower to generate.
+> **Smaller GPU or CPU-only?** `qwen3.5:9b` needs roughly 7 GB of VRAM. If that
+> still doesn't fit your machine, pull a smaller chat model instead (e.g. a
+> ~7–8B model such as `qwen2.5:7b` or `llama3.1:8b`) and set `OLLAMA_LLM_MODEL`
+> in `.env` to match. CPU-only inference works too, just slower to generate.
 
 ### 5. Configure `.env`
 
@@ -253,7 +253,7 @@ below mirrors it.
 | `DOCLING_VLM_ENABLED` | `false` | Enable Docling VLM picture descriptions during ingestion |
 | `DOCLING_VLM_MODEL` | `Qwen/Qwen2.5-VL-7B-Instruct` | Model for Docling VLM enrichment |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server (use `http://host.docker.internal:11434` from inside Docker) |
-| `OLLAMA_LLM_MODEL` | `qwen3:14b` | Chat/RAG model — needs ~10 GB VRAM; use a 7–8B model on smaller GPUs |
+| `OLLAMA_LLM_MODEL` | `qwen3.5:9b` | Chat/RAG model — needs ~7 GB VRAM; use a smaller ~7–8B model on smaller GPUs |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model |
 | `CHUNK_SIZE` | `512` | Target tokens per chunk |
 | `CHUNK_OVERLAP` | `64` | Token overlap between chunks |

@@ -103,7 +103,7 @@ class Settings(BaseSettings):
         description="Base URL of the Ollama server.",
     )
     ollama_llm_model: str = Field(
-        default="qwen3:14b",
+        default="qwen3.5:9b",
         description="Ollama model tag used for chat / RAG generation.",
     )
     ollama_embed_model: str = Field(
